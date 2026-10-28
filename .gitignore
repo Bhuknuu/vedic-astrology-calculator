@@ -1,0 +1,25 @@
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# User exports & runtime generated files
+*.jyotish
+*_report.txt
+*_dossier.txt
+*.log
+
+# Editor & OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~

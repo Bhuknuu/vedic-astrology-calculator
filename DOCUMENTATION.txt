@@ -1,0 +1,521 @@
+================================================================================
+  VEDIC ASTROLOGY CALCULATOR  v6.0  —  DEVELOPER DOCUMENTATION
+================================================================================
+  Stack   : Python 3.8+  |  Tkinter (pure XP Luna)  |  pyswisseph (optional)
+  Model   : Qwen2.5-7B-Instruct-Q6_K via local Ollama
+  GPU     : RTX 4060 8GB  (num_gpu=33, dynamic ctx 1024-3072)
+  Window  : 1260×860  |  Tahoma 8-9pt  |  #D4D0C8 Luna palette
+================================================================================
+
+CONTENTS
+--------
+  1.  v6 Change Summary
+  2.  File Reference
+  3.  Windows XP Luna Design System
+  4.  New Modules & APIs
+  5.  UI Components Reference
+  6.  Flaw Justification Log (v5 → v6)
+  7.  Astronomical Notes
+  8.  Ollama / Qwen2.5 Integration
+  9.  Error Reference
+  10. Save Format (.jyotish v6)
+
+
+================================================================================
+1.  v6 CHANGE SUMMARY
+================================================================================
+
+BUGS FIXED
+----------
+  ✓ Treeview wrapping (Yoga/Dosha)   → tk.Text card view with word-wrap
+  ✓ Shadbala deceptive totals        → Total and Pass/Fail columns removed
+  ✓ Geocoder fragility               → 1.5s debounce, HTTP 429 auto-retry
+
+NEW FEATURES
+------------
+  ✓ Bhava Chalit tab                 → planet shift table + Porphyry cusp listing
+  ✓ Ashtakavarga tab                 → all 7 planets + Sarva, colour-coded grid
+  ✓ Gochara (Transit) tab            → today's planets overlaid on natal chart
+  ✓ Dasha balance at birth           → "3y 2m 14d" format in info bar
+  ✓ Keyboard shortcuts               → Ctrl+G, Ctrl+S, Ctrl+L, F5
+
+UI OVERHAUL
+-----------
+  ✓ XPGradientHeader                 → Canvas Luna gradient (navy→royal blue)
+  ✓ XPStatusBar                      → Explorer multi-panel status strip
+  ✓ XPTooltip                        → classic yellow XP tooltip balloon
+  ✓ xp_labelframe()                  → group box with blue caption
+  ✓ titled_frame()                   → blue header band in panel borders
+  ✓ Theme switcher removed           → pure XP Classic, perfectly tuned
+  ✓ Geocode ✓ flash label
+  ✓ Bold chat streaming (**text**)
+  ✓ Multiline chat input (height=3)
+  ✓ Transit overlay on RashiChart
+
+
+================================================================================
+2.  PACKAGE REFERENCE (MONOREPO)
+================================================================================
+
+  main.py                     Entry point launcher; centres window; Win DPI fix
+  core/
+    constants.py              All static data + ASHTAK_BINDUS tables + XP_HDR colors
+    astro_engine.py           SweEngine (Porphyry b"O") + compute_transits()
+    vedic_engine.py           + ashtakavarga(), sarvashtakavarga(), format_dasha_balance()
+  ai/
+    ollama_engine.py          Streaming Ollama, stop, markdown strip
+    prediction_engine.py      Chart JSON / prompts / safety filters
+  ui/
+    ui_widgets.py             XPGradientHeader, XPStatusBar, XPTooltip, RashiChart v3
+    app.py                    JyotishApp — 10 tabs, XP layout, all v6 features
+  tests/
+    test_core.py              Automated tests for astrometry & Vedic engines
+    test_ai.py                Automated tests for AI JSON serialization
+  reference/                  Architecture proposals, scorecards, and IMPLEMENTATION_PLAN.md
+  requirements.txt            pip deps (pyswisseph only)
+  DOCUMENTATION.txt           This file
+
+
+================================================================================
+3.  BRUTALIST MINIMALIST DESIGN SYSTEM
+================================================================================
+
+COLOR PALETTE (exact)
+---------------------
+  #121212   XP_BG       Deep dark window/dialog background
+  #1E1E1E   XP_SURFACE  Panel/container surface (dark)
+  #333333   XP_BORDER   Sharp 1px separator and outer borders
+  #FFFFFF   XP_FIELD    White — text entries, Treeview rows, chart canvas
+  #F5F5F5   XP_TEXT_D   High-contrast light text on dark surfaces
+  #A1A1AA   XP_TEXT_M   Muted/secondary label text
+  #3B82F6   XP_BLUE     Sharp blue accent (tabs, selection ring)
+  #60A5FA   XP_BLUE2    Secondary accent (transit, AI labels)
+  #262626   XP_BTN      Dark button face
+  #333333   XP_GRAY     Neutral border/separator
+  #2D2614   XP_WARN     Dark amber warning banner
+  #FDE68A   XP_WARN_FG  Warning banner text
+
+TYPOGRAPHY
+----------
+  Tahoma 8pt           Muted labels, hints, status bar
+  Tahoma 9pt           Body text, chat, input values
+  Tahoma 9pt bold      Section headings, tab headers, button text
+  Tahoma 11pt bold     App title in solid header bar
+  Tahoma 8pt italic    System messages, varga description
+  Devanagari fallback  Arial Unicode MS → Nirmala UI → Mangal → FreeSans
+
+SPACING RULES
+-------------
+  4px   between related controls
+  6px   between control groups within a panel
+  8px   outer margin on panels
+  Buttons: minimum 75×23px; primary action ≥ 85×29px
+  Tab padding: 10px horizontal, 4-5px vertical
+  Status bar: 20px height, flat panels with 1px separators
+
+BORDER & RELIEF SYSTEM
+-----------------------
+  Group box     : tk.LabelFrame, relief="flat", bd=1, Tahoma 8pt bold fg=XP_TEXT_M
+  Content pane  : titled_frame() — 1px XP_BORDER edge, dark XP_SURFACE header band 22px
+  Entry fields  : relief="flat", bd=1, bg="#FFFFFF" (white)
+  Buttons       : relief="flat", bd=0, bg=XP_BTN or XP_BLUE
+  Primary button: Blue.TButton — solid XP_BLUE bg, white text, no ring frame needed
+  Status panels : relief="flat", bg=XP_SURFACE, flat 1px border
+  Treeview hdr  : relief="flat", bg=XP_SURFACE
+  Tooltips      : relief="solid", bd=1, bg="#000000", fg="#FFFFFF"
+
+MINIMALIST PRINCIPLES
+---------------------
+  Solid header bar   : tk.Frame+Label (black bg), NO canvas/gradient, NO resize artifacts
+  Paned layout       : Main area and inner tabs use tk.PanedWindow (draggable sashes)
+  Responsive charts  : RashiChart._resize() fills expanding pane proportionally
+  Stretch columns    : Treeview columns use stretch=True for proportional fill on maximize
+  No raised borders  : All relief="flat" or bare 1px solid borders only
+  Color semantics    :
+    White  → data / editable areas (Treeview rows, Entry, chart canvas)
+    Dark   → surfaces, headers, panels, backgrounds
+    Blue   → accent, primary action, selection
+    Green  → high dignity / strong bindu / online status
+    Red    → debility / weak bindu / error / danger action
+    Amber  → current dasha / shifted bhava / warning banner
+    Gray   → muted labels, past dasha, secondary info
+  Active tab           : white bg, XP_BLUE text, +1px padding = "pops up"
+  Inactive tab         : #C8C4BC bg, black text = "stays down"
+  Selection            : #316AC5 bg, white text (Explorer exact)
+  Sunken status bar    : grey outer frame, white-bg panels, corner grip glyph
+  Yellow tooltip       : Toplevel, overrideredirect, 600ms delay
+  ✓ flash confirmation : green Label, auto-clears after 2s via root.after()
+
+
+================================================================================
+4.  NEW MODULES & APIs
+================================================================================
+
+astro_engine.compute_transits(ayanamsa_key, lat, lon)
+------------------------------------------------------
+  Returns compute_chart() output for the current UTC moment.
+  Lat/lon default to 0.0 — acceptable for geocentric planet longitudes.
+  House cusps would differ by location, but transit tab uses natal Lagna
+  as reference, so cusps are unused.
+
+vedic_engine.ashtakavarga(planet, grahas)
+-----------------------------------------
+  Returns list[int] of 12 bindu scores (index 0 = Mesha).
+  Each sign gets 0-8 bindus from 7 planets + Lagna contributor positions.
+  Tables from BPHS (Brihat Parashara Hora Shastra).
+
+  Algorithm:
+    For each of 12 target signs:
+      For each contributor (7 planets + Lagna):
+        house_from_contributor = (target_sign - contributor_rashi) % 12 + 1
+        if house_from_contributor in ASHTAK_BINDUS[planet][contributor]:
+          score += 1
+
+vedic_engine.sarvashtakavarga(grahas)
+--------------------------------------
+  Sums ashtakavarga() across all 7 ASHTAK_PLANETS.
+  Returns list[int] of 12 totals (max 56).
+  Typical range: 20-40 per sign.
+
+vedic_engine.format_dasha_balance(start_dt, birth_dt)
+------------------------------------------------------
+  Returns "Xy Ym Zd" string for the elapsed time between dasha start
+  and birth — i.e., the REMAINING dasha balance at birth.
+  Used in dasha info bar: "Born: Jupiter MD, balance 3y 2m 14d"
+
+astro_engine.resolve_timezone(iana_tz_name, y, mo, d, h, mi)
+------------------------------------------------------------
+  Historical timezone & DST auto-resolver using Python standard library zoneinfo.
+  Returns decimal utc_offset, is_dst flag, and timezone abbreviation.
+
+vedic_engine.compute_pratyantardasha_for_ad(ad_dict, year_days, include_sookshma)
+---------------------------------------------------------------------------------
+  Expands any Antardasha dictionary into its 9 Level 3 Pratyantardashas (and
+  optional Level 4 Sookshmadashas) on demand for precise event timing.
+
+vedic_engine.check_varga_boundary(lon, n, threshold) / compute_varga_chart(grahas, n, threshold)
+-------------------------------------------------------------------------------------------------
+  Detects planets sitting near divisional chart sign boundaries (within +/- threshold,
+  default 0.05°) and generates complete divisional charts with relative houses.
+
+vedic_engine.panchanga(surya_lon, chandra_lon, dt_or_jd)
+--------------------------------------------------------
+  Computes the 5 classical limbs of Vedic time: Tithi (with paksha), Vara (weekday + lord),
+  Nakshatra (pada + lord), Nitya Yoga (nature + lord), and Karana (highlighting Bhadra).
+
+vedic_engine.gemstone_prescription(graha, lagna_rashi, body_weight_kg)
+----------------------------------------------------------------------
+  Calculates gemstone weight based on native's body weight, with metal, finger,
+  wearing time, and mantra. Automatically contraindicates stones for functional malefics.
+
+vedic_engine.shadbala(graha, grahas, lagna_rashi)
+-------------------------------------------------
+  Full 6-fold Shadbala calculation (Sthana, Cheshta, Naisargika, Drik, Ayana, Kendradi).
+
+ui_widgets.XPGradientHeader(parent, title, subtitle)
+-----------------------------------------------------
+  Canvas widget, HEIGHT=44px.
+  draw_xp_gradient() fills left→right XP_HDR_L→XP_HDR_R.
+  Bottom 3px: bright XP_HDR_H highlight strip (Luna gloss).
+  .set_subtitle(txt)  — update right-aligned subtitle text live.
+  Binds <Configure> to redraw on resize.
+
+ui_widgets.XPStatusBar(parent, panels)
+---------------------------------------
+  panels = list of (key, width_chars, initial_text)
+  .set(key, text)  — update a specific panel.
+  Panels: "msg" (45), "engine" (18), "ay" (22), "yogas" (12), "ollama" (18)
+  Body frame: bg="#808080" (separator color)
+  Each panel: relief="sunken", bd=1, bg=XP_FIELD
+
+ui_widgets.XPTooltip(widget, text, delay=600)
+---------------------------------------------
+  Binds <Enter>/<Leave>/<Button> on widget.
+  Shows a Toplevel with yellow bg after `delay` ms.
+  Auto-cancels on leave or click.
+
+ui_widgets.xp_labelframe(parent, title, padx, pady)
+----------------------------------------------------
+  Returns tk.LabelFrame styled with:
+    bg=XP_BG, fg=XP_BLUE, font=Tahoma 8pt bold, relief="groove", bd=2
+
+ui_widgets.RashiChart (v3)
+---------------------------
+  New transit_grahas= kwarg on set_data().
+  Transit planets rendered at bottom of each cell in XP_BLUE2 color.
+  Natal planets in upper rows; retrogrades in dark red.
+  Legend line updates: shows "Natal  ·  Transit (blue)  ●  Retro (red)"
+  when transit_grahas is non-empty.
+
+
+================================================================================
+5.  UI COMPONENTS REFERENCE
+================================================================================
+
+TAB LAYOUT (10 tabs)
+--------------------
+  Birth Chart    — D-1 Rashi + D-9 Navamsa side-by-side, info bar
+  Planets        — sortable Treeview: all grahas + Lagna, dignity color tags
+  Divisional     — Varga selector (D-1 to D-60), chart + planet status table
+  Dasha          — PanedWindow: Mahadasha list + Antardasha on-click
+  Yogas          — tk.Text card view: Yogas (top) + Doshas (bottom)
+  Shadbala       — 4/6 component scores, disclaimer, sort columns
+  Bhava Chalit   — planet shift comparison + Porphyry cusp table
+  Ashtakavarga   — planet/Sarva selector, 12-sign bindu grid, color codes
+  Gochara        — live transit chart overlay + position comparison table
+  AI Reading     — Ollama status, model picker, streaming chat, bold output
+
+INPUT PANEL GROUPS
+------------------
+  Birth Date     — Day combobox, Month combobox, Year entry
+  Birth Time     — Hour combobox, Minute combobox, Timezone combobox
+  Birth Place    — City entry, Geocode button, ✓ flash, Lat/Lon entries
+  Native & Opts  — Name entry, Ayanamsa combobox, Dasha Year combobox
+  [Primary btn]  — "Generate Chart (Ctrl+G)" wrapped in dark ring frame
+  Chart File     — Save (Ctrl+S), Load (Ctrl+L)
+
+KEYBOARD SHORTCUTS
+------------------
+  Ctrl+G    Generate Chart
+  Ctrl+S    Save .jyotish file
+  Ctrl+L    Load .jyotish file
+  F5        Refresh Gochara (today's transits)
+
+ASHTAKAVARGA TAB USAGE
+-----------------------
+  Selector: "Sarva (All)" shows a row per planet PLUS the Sarva total.
+  Individual planet: shows one row for that planet across 12 signs.
+  Green = sign score ≥ 4 (strong), Red = < 4 (weak), Blue = Sarva row.
+  Interpretation: a planet in a sign with ≥ 4 of its own bindus can deliver
+  results; < 4 bindus suggests impediment even if the planet is exalted.
+
+BHAVA CHALIT TAB USAGE
+-----------------------
+  Left panel: Planet | Longitude | Rashi | Rashi Bhava | Chalit Bhava | Shifted?
+  Orange rows = planet has moved to a different bhava in the Chalit chart.
+  Right panel: Bhava 1-12 | Cusp degree | Rashi | Degree within sign
+  When SWE is active (Porphyry), Chalit Bhava reflects actual house boundaries.
+  When fallback math is active, both bhava columns will match (whole-sign).
+
+GOCHARA TAB USAGE
+-----------------
+  Click "⟳ Refresh (F5)" to fetch current UTC planetary positions.
+  Natal chart shows both natal (dark) and transit (blue) symbols.
+  Table: Planet | Transit Sign | Transit Bhava (from natal Lagna) |
+         Natal Sign | Natal Bhava | Notable observation
+  Yellow rows = Shani/Guru/Rahu in sensitive natal positions.
+
+
+================================================================================
+6.  FLAW JUSTIFICATION LOG (v5 → v6)
+================================================================================
+
+FIXED IN v6
+-----------
+
+[FIX] Treeview wrapping for Yoga/Dosha
+  Root cause: ttk.Treeview cells cannot wrap text; Vivaran columns were
+  truncated for long descriptions produced by vedic_engine.
+  Fix: Replaced both Treeviews with tk.Text(wrap="word") card view.
+  Named tags (card_name, card_good, card_bad, card_desc, card_graha) give
+  per-run visual differentiation without horizontal scrolling.
+  Status: COMPLETE in v5; validated in v6.
+
+[FIX] Shadbala deceptive totals
+  Root cause: vedic_engine still computes kul (total) and poorna (pass/fail)
+  from 4 of 6 bala components. Displaying a ✓/– based on an incomplete
+  equation is logically deceptive and professionally inappropriate.
+  Fix: Total and Pass/Fail columns never appear in the UI (v5+).
+  kul/poorna remain available in the dict for programmatic use.
+  Row coloring uses Dignity (Uchcha=green, Neecha=red), not a partial total.
+  Status: COMPLETE.
+
+[FIX] Geocoder fragility (debounce + 429 retry)
+  Root cause: No throttle between calls. Rapid clicks → Nominatim 429 → IP ban.
+  Fix: class-level _last_call timestamp, 1.5s minimum interval, 2s pause
+  on 429 with one automatic retry, clear error message on second 429.
+  Status: COMPLETE in v5; validated in v6.
+
+NEW IN v6
+---------
+
+[NEW] Bhava Chalit tab
+  Why: sidereal_cusps are computed in astro_engine.py but were never displayed.
+  An astrologer cannot interpret the chart properly without seeing which planets
+  have shifted bhava under Sripathi/Porphyry boundaries.
+  Implementation: comparison table + cusp degree table in PanedWindow layout.
+  Shifted planets highlighted orange. Cusp table alternates row colors.
+
+[NEW] Ashtakavarga tab
+  Why: A planet might be exalted, but < 4 bindus in its own AV means it cannot
+  deliver full results. Without AV, planet strength analysis is incomplete.
+  Implementation: BPHS tables in constants.ASHTAK_BINDUS; ashtakavarga() in
+  vedic_engine computes per-sign scores; UI shows all 7 planets + Sarva total.
+  Color-coded: green ≥ 4, red < 4, blue Sarva row.
+
+[NEW] Gochara (Transit) tab
+  Why: Static birth chart alone is insufficient for timing predictions.
+  Astrologers overlay current planetary positions to assess active influences.
+  Implementation: compute_transits() in astro_engine uses current UTC time.
+  RashiChart now accepts transit_grahas= for dual-layer rendering.
+  Notable transit heuristics: Shani/Guru/Rahu in houses 1,4,7,8,12
+  relative to natal Moon bhava are flagged yellow.
+
+[NEW] Dasha balance at birth
+  Why: "Born with 3y 2m 14d of Jupiter remaining" is the first thing an
+  astrologer checks to validate birth time accuracy.
+  Implementation: format_dasha_balance(start_dt, birth_dt) in vedic_engine;
+  displayed in dasha_info_bar after every calculation.
+
+[NEW] Keyboard shortcuts (Ctrl+G, Ctrl+S, Ctrl+L, F5)
+  Why: Power users expect keyboard access to the most frequent operations.
+  Implementation: root.bind() in _bind_shortcuts().
+
+[NEW] XP Luna gradient header
+  Why: The flat blue band in v5 lacked the Luna depth. Luna's title bar is
+  a gradient from deep navy (#0A246A) to royal blue (#166BCA) with a 3px
+  bright highlight strip at the bottom (the "gloss" effect).
+  Implementation: XPGradientHeader Canvas widget with draw_xp_gradient()
+  drawing step-wise horizontal lines. Redraw bound to <Configure>.
+
+[NEW] XP Explorer status bar
+  Why: v5 used a single Label. XP Explorer has a multi-panel status bar
+  showing different categories of information with sunken borders.
+  Implementation: XPStatusBar class; 5 panels; .set(key, text) API.
+
+[NEW] XP LabelFrame groups in input panel
+  Why: v5 used plain ttk.Frames with separators. Authentic XP groups
+  related controls in a LabelFrame with a caption in the groove border.
+  Implementation: xp_labelframe() helper; 4 groups in input panel.
+
+WAVED OFF
+---------
+
+[WAVE] Drik Bala / Ayana Bala completion
+  Requires aspect strength calculation (Drik) and planetary declination
+  from ephemeris (Ayana). Both are substantial new engine work.
+  Shadbala tab still shows 4/6 with explicit disclaimer. Deferred to v7.
+
+[WAVE] Bhava Chalit visual chart (canvas grid)
+  The comparison table + cusp table serves professional astrologers better
+  than a modified chart grid. The shifted-planet highlight is the key signal.
+  A canvas-based Chalit chart is architecturally ready (sidereal_cusps exist)
+  but deferred to v7 as a visual enhancement.
+
+[WAVE] Ashtakavarga per-cell coloring in Treeview
+  ttk.Treeview applies one tag per row, not per cell. Individual cell colors
+  require a custom Canvas implementation (substantial effort). Row-level
+  color coding is adequate for identifying strong/weak planets.
+
+[WAVE] Context menus (right-click)
+  Moderate complexity, low priority. Deferred to v7.
+
+[WAVE] Timezone autocomplete
+  Custom Listbox popup required (~80 lines). Deferred — 34 entries manageable.
+
+
+================================================================================
+7.  ASTRONOMICAL NOTES
+================================================================================
+
+See v5 DOCUMENTATION for full details. Key facts:
+
+  House system  : Porphyry (b"O") = Sripathi — trisects ASC-MC arc
+  Ayanamsa      : Lahiri default; Raman and KP available
+  Nodes         : Mean Node (Rahu); Ketu = Rahu+180°
+  Dasha year    : Tropical 365.24219d default; Savana/Sidereal/Julian available
+
+ASHTAKAVARGA NOTES
+  The tables in ASHTAK_BINDUS implement the standard BPHS variant.
+  Different Jyotish schools use slightly variant tables — results may differ
+  by 0-2 bindus from other software. The BPHS version is the most widely
+  cited classical source.
+
+  Sarvashtakavarga total range: 337-339 bindus across all 12 signs.
+  (Theoretical maximum 7×8×12 = 672; practical range is much lower due to
+  the benefic house distributions being < 8 per contributor per planet.)
+
+TRANSIT INTERPRETATION HEURISTICS (Gochara tab)
+  The "notable" flag (yellow row) applies when:
+    Shani, Guru, or Rahu transits house 1, 4, 7, 8, or 12 from natal Lagna
+    OR when Shani transits the natal Moon's bhava (Sade Sati approximation).
+  These are crude heuristics for visual emphasis — not a full Gochara engine.
+  A proper Gochara calculation requires aspect distance, directional strength,
+  and Ashtakavarga transit scores (Kakshya Bala). Deferred to v7.
+
+
+================================================================================
+8.  OLLAMA / QWEN2.5 INTEGRATION
+================================================================================
+
+See v5 DOCUMENTATION for full setup instructions.
+
+BOLD STREAMING PIPELINE (v6)
+  1. Token arrives in _token() callback → appended to self._render_buf
+  2. root.after(0, _flush_render_buf) queued
+  3. _flush_render_buf() runs regex r'\*\*(.+?)\*\*' on the buffer
+  4. Matched content → tag "answer_bold" (Tahoma 9pt bold)
+  5. Non-matched content → tag "answer" (Tahoma 9pt)
+  6. Incomplete ** held in buffer until next token or _flush_remaining_buf()
+
+MULTILINE INPUT
+  chat_in = tk.Text(height=3, wrap="word")
+  <Return>       → _on_chat_enter() → calls _send(), returns "break"
+  <Shift-Return> → unbound, Tk inserts natural newline
+  Content retrieved: self.chat_in.get("1.0", "end-1c").strip()
+
+
+================================================================================
+9.  ERROR REFERENCE
+================================================================================
+
+"No module named 'swisseph'"
+  App uses fallback algebraic engine. Install: pip install pyswisseph
+  Bhava Chalit will show whole-sign bhavas only (no Porphyry cusps).
+
+"Ollama: Not running"
+  Run: ollama serve
+  Verify OLLAMA_BASE_URL in constants.py matches your Ollama port.
+
+"Nominatim rate limit (HTTP 429)"
+  Geocoder auto-retries once after 2s. If persistent, wait ~60s.
+  Nominatim ToS: maximum 1 request/second per IP.
+
+"Location not found"
+  Try a more specific city name: "Mumbai, Maharashtra, India" vs "Mumbai".
+  Nominatim has better coverage for major cities.
+
+"Some Dasha dates could not be parsed"
+  .jyotish file may be from v3 or hand-edited. Expected format: YYYY-MM-DD HH:MM
+  Chart loads successfully; only affected Dasha periods are skipped.
+
+"Ashtakavarga shows 0 bindus for all signs"
+  Chart not yet generated. Load or generate a chart first, then visit the tab.
+
+"Gochara chart shows only transit planets, no natal"
+  Generate a natal chart first. Transit tab shows only transit data until
+  a natal chart exists (self.grahas is empty).
+
+Transit "notable" flag appears incorrectly
+  The heuristic uses house numbers from natal Lagna. If natal Lagna is 0
+  (chart not loaded), all bhavas will be off. Generate chart first.
+
+
+================================================================================
+10. SAVE FORMAT (.jyotish v6)
+================================================================================
+
+JSON — version 6 adds no structural changes from v5.
+v5 files load without modification; "dasha_year" absent → Tropical default.
+
+New in birth_params:
+  "dasha_year": "Tropical  (365.24219d)"   (preserved from v5)
+
+Version field: "version": 6
+Saved at: "saved_at": "YYYY-MM-DD HH:MM"
+
+Backward compatibility: v4, v5 files load fully. v3 files load with warnings.
+
+================================================================================
+  END OF DOCUMENTATION  v6.0
+================================================================================
