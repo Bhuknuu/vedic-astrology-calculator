@@ -213,13 +213,14 @@ XP_WARN_FG = "#FDE68A"   # Warning text
 # FIX: All endpoint config centralised — switch backends in one place.
 # LM Studio: OLLAMA_BASE_URL = "http://localhost:1234"
 # (also update ollama_engine.py payload format for OpenAI-compat schema)
-OLLAMA_BASE_URL       = "http://localhost:11434"
-OLLAMA_MODEL          = "qwen2.5:7b"
-OLLAMA_GPU_LAYERS     = 33
-OLLAMA_TEMPERATURE    = 0.30
-OLLAMA_REPEAT_PENALTY = 1.1
-OLLAMA_TOP_P          = 0.9
-OLLAMA_MAX_PREDICT    = 1200
+OLLAMA_BASE_URL          = "http://localhost:11434"
+OLLAMA_MODEL             = "qwen2.5:7b"
+OLLAMA_GPU_LAYERS        = 33
+OLLAMA_TEMPERATURE       = 0.30
+OLLAMA_REPEAT_PENALTY    = 1.1
+OLLAMA_TOP_P             = 0.9
+OLLAMA_MAX_PREDICT       = 2500   # Raised from 1200 to prevent mid-sentence cutoff
+OLLAMA_MAX_PREDICT_FULL  = 3800   # High-headroom budget for full 7-domain comprehensive readings
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  ASTROMETRIC CONSTANTS FOR PHASE 1 IMPLEMENTATION
@@ -241,7 +242,78 @@ BOUNDARY_THRESHOLD = 0.05  # degrees - proximity to sign boundaries
 
 # Dynamic context bounds (computed per-call from payload token estimate)
 OLLAMA_CTX_MIN = 1024
-OLLAMA_CTX_MAX = 3072
+OLLAMA_CTX_MAX = 8192   # Expanded to 8k to accommodate RAG classical context & deep readings
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  READING UI THEMES & ACCESSIBILITY TYPOGRAPHY
+# ══════════════════════════════════════════════════════════════════════════════
+READING_FONTS = ["Segoe UI", "Georgia", "Helvetica", "Verdana", "Consolas", "Tahoma"]
+READING_DEFAULT_FONT = "Segoe UI"
+READING_DEFAULT_SIZE = 11
+READING_SIZES = [9, 10, 11, 12, 13, 14, 16, 18, 20]
+
+READING_THEMES = {
+    "Dark Studio": {
+        "bg": "#141416",
+        "fg": "#EDEDED",
+        "card_bg": "#1C1C20",
+        "border": "#2E2E36",
+        "header_fg": "#60A5FA",
+        "pred_fg": "#F4F4F5",
+        "basis_fg": "#FBBF24",
+        "basis_bg": "#222018",
+        "sutra_fg": "#A78BFA",
+        "remedy_fg": "#34D399",
+        "system_fg": "#71717A",
+        "thinking_fg": "#94A3B8",
+        "thinking_bg": "#1A1D27",
+    },
+    "Parchment Book": {
+        "bg": "#FAF7F2",
+        "fg": "#262320",
+        "card_bg": "#F2EDE4",
+        "border": "#E3DCCF",
+        "header_fg": "#1D4ED8",
+        "pred_fg": "#1F1D1B",
+        "basis_fg": "#B45309",
+        "basis_bg": "#FEF3C7",
+        "sutra_fg": "#6D28D9",
+        "remedy_fg": "#047857",
+        "system_fg": "#78716C",
+        "thinking_fg": "#475569",
+        "thinking_bg": "#E2E8F0",
+    },
+    "Classic Clean": {
+        "bg": "#FFFFFF",
+        "fg": "#111827",
+        "card_bg": "#F8FAFC",
+        "border": "#E2E8F0",
+        "header_fg": "#2563EB",
+        "pred_fg": "#0F172A",
+        "basis_fg": "#D97706",
+        "basis_bg": "#FFFBEB",
+        "sutra_fg": "#7C3AED",
+        "remedy_fg": "#059669",
+        "system_fg": "#64748B",
+        "thinking_fg": "#334155",
+        "thinking_bg": "#F1F5F9",
+    },
+    "Cosmic Midnight": {
+        "bg": "#0A0E17",
+        "fg": "#E2E8F0",
+        "card_bg": "#111827",
+        "border": "#1E293B",
+        "header_fg": "#38BDF8",
+        "pred_fg": "#F8FAFC",
+        "basis_fg": "#FCD34D",
+        "basis_bg": "#1C1917",
+        "sutra_fg": "#C084FC",
+        "remedy_fg": "#4ADE80",
+        "system_fg": "#64748B",
+        "thinking_fg": "#94A3B8",
+        "thinking_bg": "#131C2E",
+    },
+}
 
 AYANAMSA_OPTIONS = ["Lahiri (Chitrapaksha)", "Raman", "KP (Krishnamurti)"]
 

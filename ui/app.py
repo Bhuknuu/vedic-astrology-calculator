@@ -151,7 +151,7 @@ class JyotishApp:
         # ── Gradient header ────────────────────────────────────────────────
         self.header = XPGradientHeader(
             self.root,
-            title="  Vedic Astrology Calculator  v6.0  ·  Qwen2.5-7B  ·  Offline AI",
+            title="Vedic Astrology Calculator  v6.0  ·  Offline",
             subtitle="pyswisseph active" if SWE_OK else "⚠ fallback math mode"
         )
         self.header.pack(fill="x")
@@ -389,7 +389,7 @@ class JyotishApp:
         self.dasha_title_lbl.pack(anchor="w",padx=6,pady=3)
         pn = tk.PanedWindow(f,orient="horizontal",bg=XP_BORDER,sashrelief="flat",sashwidth=3,bd=0)
         pn.pack(fill="both",expand=True,padx=4,pady=3)
-        mo,mi = titled_frame(pn,"Mahadasha (Main Period)",padx=3); pn.add(mo,stretch="always")
+        mo,mi = titled_frame(pn,"Mahadasha (Main Period)",padx=3); pn.add(mo)
         mc = ("Lord","Start","End","Years","Status")
         self.md_tree = ttk.Treeview(mi,columns=mc,show="headings",style="XP.Treeview",height=12)
         for c,w in zip(mc,[80,90,90,55,80]):
@@ -400,7 +400,7 @@ class JyotishApp:
         self.md_tree.bind("<<TreeviewSelect>>",self._on_md_sel)
         self.md_tree.tag_configure("current",background="#FEF3C7",foreground="#78350F")
         self.md_tree.tag_configure("past",   foreground="#71717A")
-        ao,ai = titled_frame(pn,"Antardasha (Sub-Period)",padx=3); pn.add(ao,stretch="always")
+        ao,ai = titled_frame(pn,"Antardasha (Sub-Period)",padx=3); pn.add(ao)
         ac = ("MD Lord","AD Lord","Start","End","Days","Status")
         self.ad_tree = ttk.Treeview(ai,columns=ac,show="headings",style="XP.Treeview",height=12)
         for c,w in zip(ac,[75,75,90,90,55,70]):
@@ -412,7 +412,7 @@ class JyotishApp:
         self.ad_tree.tag_configure("past",   foreground="#71717A")
         self.ad_tree.bind("<<TreeviewSelect>>", self._on_ad_sel)
 
-        po,pi = titled_frame(pn,"Pratyantardasha (Level-3)",padx=3); pn.add(po,stretch="always")
+        po,pi = titled_frame(pn,"Pratyantardasha (Level-3)",padx=3); pn.add(po)
         pc = ("PD Lord","Start","End","Days","Status")
         self.pd_tree = ttk.Treeview(pi,columns=pc,show="headings",style="XP.Treeview",height=12)
         for c,w in zip(pc,[65,80,80,45,60]):
@@ -492,7 +492,7 @@ class JyotishApp:
         pn = tk.PanedWindow(f,orient="vertical",bg=XP_BORDER,sashrelief="flat",sashwidth=3,bd=0)
         pn.pack(fill="both",expand=True,padx=4,pady=4)
 
-        yo,yi = titled_frame(pn,"Planetary Yogas",padx=4); pn.add(yo,stretch="always")
+        yo,yi = titled_frame(pn,"Planetary Yogas",padx=4); pn.add(yo)
         self.yoga_text = tk.Text(yi,wrap="word",height=9,relief="flat",bd=0,
                                  bg=XP_FIELD,fg="#000000",font=("Tahoma",9),
                                  state="disabled",cursor="arrow")
@@ -501,7 +501,7 @@ class JyotishApp:
         self.yoga_text.pack(side="left",fill="both",expand=True); ysb.pack(side="right",fill="y")
         self._cfg_card_tags(self.yoga_text)
 
-        do,di = titled_frame(pn,"Planetary Doshas",padx=4); pn.add(do,stretch="always")
+        do,di = titled_frame(pn,"Planetary Doshas",padx=4); pn.add(do)
         self.dosha_text = tk.Text(di,wrap="word",height=7,relief="flat",bd=0,
                                   bg=XP_FIELD,fg="#000000",font=("Tahoma",9),
                                   state="disabled",cursor="arrow")
@@ -558,7 +558,7 @@ class JyotishApp:
         pn.pack(fill="both",expand=True,padx=4,pady=4)
 
         # Left: planet shift table
-        lo,li = titled_frame(pn,"Planet Bhava Comparison",padx=4,pady=4); pn.add(lo,stretch="always")
+        lo,li = titled_frame(pn,"Planet Bhava Comparison",padx=4,pady=4); pn.add(lo)
         cc = ("Graha","Longitude","Rashi","Rashi Bhava","Chalit Bhava","Shifted?")
         self.chalit_tree = ttk.Treeview(li,columns=cc,show="headings",style="XP.Treeview",height=14)
         for c,w in zip(cc,[85,90,110,100,100,70]):
@@ -570,7 +570,7 @@ class JyotishApp:
         self.chalit_tree.tag_configure("same",     background="#FFFFFF", foreground="#000000")
 
         # Right: cusp table
-        ro,ri = titled_frame(pn,"Porphyry House Cusps",padx=4,pady=4); pn.add(ro,stretch="always")
+        ro,ri = titled_frame(pn,"Porphyry House Cusps",padx=4,pady=4); pn.add(ro)
         cpc = ("Bhava","Cusp Degree","Rashi","Sign Ansha")
         self.cusp_tree = ttk.Treeview(ri,columns=cpc,show="headings",style="XP.Treeview",height=14)
         for c,w in zip(cpc,[60,110,110,90]):
@@ -633,11 +633,11 @@ class JyotishApp:
         pn = tk.PanedWindow(f,orient="horizontal",bg=XP_BORDER,sashrelief="flat",sashwidth=3,bd=0)
         pn.pack(fill="both",expand=True,padx=4,pady=4)
 
-        co,ci = titled_frame(pn,"Natal + Transit Chart",padx=3,pady=3); pn.add(co,stretch="always")
+        co,ci = titled_frame(pn,"Natal + Transit Chart",padx=3,pady=3); pn.add(co)
         self.transit_chart = RashiChart(ci,title="Natal + Transits",size=340)
         self.transit_chart.pack(fill="both",expand=True,padx=2,pady=2)
 
-        to,ti = titled_frame(pn,"Transit Planet Positions",padx=4,pady=4); pn.add(to,stretch="always")
+        to,ti = titled_frame(pn,"Transit Planet Positions",padx=4,pady=4); pn.add(to)
         tc = ("Planet","Transit Sign","Transit Bhava","Natal Sign","Natal Bhava","Note")
         self.transit_tree = ttk.Treeview(ti,columns=tc,show="headings",style="XP.Treeview",height=14)
         for c,w in zip(tc,[85,110,100,110,100,120]):
@@ -669,7 +669,7 @@ class JyotishApp:
         self.model_combo = ttk.Combobox(mc,textvariable=self.ollama_model_var,
                                         width=28,style="XP.TCombobox")
         self.model_combo.pack(side="left",padx=4)
-        tk.Label(mc,text="Qwen2.5-7B-Q6_K recommended  ·  Offline GPU",
+        tk.Label(mc,text="Offline inference  ·  Local LLM  ·  GPU optional",
                  bg=XP_BG,font=("Tahoma",8),fg=XP_TEXT_M).pack(side="left")
 
         self.setup_frame = tk.Frame(f,bg=XP_SURFACE,relief="flat",bd=1)
