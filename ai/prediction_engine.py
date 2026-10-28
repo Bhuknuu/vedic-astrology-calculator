@@ -21,6 +21,7 @@ from core.constants import (
     DASHA_KRAM,
 )
 from core.vedic_engine import sthiti
+from ai.rag_engine import ClassicalRAG
 
 
 class PredictionEngine:
@@ -54,42 +55,67 @@ class PredictionEngine:
                 "retro":   pd.get("retro", False),
             }
 
-        # Current + next Mahadasha / Antardasha
-        cur_md = cur_ad = None
-        for md in dashas:
-            if md["start"] <= now <= md["end"]:
+        # Current, previous, and chronological Mahadashas & Antardashas
+        cur_md = cur_ad = prev_md = next_md = None
+        timeline_list = []
+
+        for idx, md in enumerate(dashas):
+            status = "CURRENT" if md["start"] <= now <= md["end"] else ("PAST" if md["end"] < now else "FUTURE")
+            md_pd = grahas.get(md["lord"], {})
+            md_entry = {
+                "lord": md["lord"],
+                "span": f"{md['start'].year}-{md['end'].year}",
+                "status": status,
+                "lord_bhava": md_pd.get("bhava", ""),
+                "lord_dignity": sthiti(md["lord"], md_pd.get("rashi", 0)),
+            }
+            timeline_list.append(md_entry)
+
+            if status == "CURRENT":
                 cur_md = md
+                if idx > 0:
+                    prev_md = dashas[idx - 1]
                 for ad in md["antardasha"]:
                     if ad["start"] <= now <= ad["end"]:
                         cur_ad = ad
                         break
-                break
+            elif status == "FUTURE" and next_md is None:
+                next_md = md
 
-        dasha_info = {}
+        dasha_info = {
+            "chronological_timeline": timeline_list,
+        }
+        if prev_md:
+            prev_pd = grahas.get(prev_md["lord"], {})
+            dasha_info["previous_mahadasha"] = {
+                "lord": prev_md["lord"],
+                "span": f"{prev_md['start'].strftime('%b %Y')} to {prev_md['end'].strftime('%b %Y')}",
+                "lord_bhava": prev_pd.get("bhava", ""),
+                "lord_dignity": sthiti(prev_md["lord"], prev_pd.get("rashi", 0)),
+            }
         if cur_md:
             md_pd = grahas.get(cur_md["lord"], {})
             dasha_info["mahadasha"] = {
-                "lord":       cur_md["lord"],
-                "ends":       cur_md["end"].strftime("%b %Y"),
-                "yrs_left":   round((cur_md["end"] - now).days / 365.24219, 1),
+                "lord": cur_md["lord"],
+                "span": f"{cur_md['start'].strftime('%b %Y')} to {cur_md['end'].strftime('%b %Y')}",
+                "ends": cur_md["end"].strftime("%b %Y"),
+                "yrs_left": round((cur_md["end"] - now).days / 365.24219, 1),
                 "lord_bhava": md_pd.get("bhava", ""),
                 "lord_dignity": sthiti(cur_md["lord"], md_pd.get("rashi", 0)),
             }
         if cur_ad:
             ad_pd = grahas.get(cur_ad["lord"], {})
             dasha_info["antardasha"] = {
-                "lord":       cur_ad["lord"],
-                "ends":       cur_ad["end"].strftime("%b %Y"),
+                "lord": cur_ad["lord"],
+                "span": f"{cur_ad['start'].strftime('%b %Y')} to {cur_ad['end'].strftime('%b %Y')}",
+                "ends": cur_ad["end"].strftime("%b %Y"),
                 "lord_bhava": ad_pd.get("bhava", ""),
             }
-        # Next Mahadasha (useful for predictions)
-        for md in dashas:
-            if md["start"] > now:
-                dasha_info["next_mahadasha"] = {
-                    "lord":  md["lord"],
-                    "starts": md["start"].strftime("%b %Y"),
-                }
-                break
+        if next_md:
+            dasha_info["next_mahadasha"] = {
+                "lord": next_md["lord"],
+                "starts": next_md["start"].strftime("%b %Y"),
+            }
 
         # Bhava lords (Lagna through 12th) — critical for house-level questions
         bhava_lords = {
@@ -196,99 +222,204 @@ class PredictionEngine:
 
         return "\n".join(lines)
 
-    # ── System Prompt (Qwen2.5-7B constrained) ────────────────────────────────
+    # ── System Prompt (Dual-Layer Explainable AI & RAG Constrained) ───────────
     @staticmethod
     def system_prompt():
         """
-        Constrained system prompt for Qwen2.5-7B-Instruct.
-        Fixes vs v3.0:
-          - Added 'I don't know' / fatalistic query deflection protocol
-          - Anti-markdown instruction (Qwen2.5 tends to over-use ** and ##)
-          - Removed gambhirata severity references
-          - Tighter output size cap for 7B context efficiency
+        Dual-Layer Explainable AI system prompt for 7B-9B models.
+        Separates plain-language client predictions from technical Kundli calculations,
+        satisfying Explainable AI (XAI) transparency principles.
         """
         return (
-            "You are Jyotisha-GPT, an expert Vedic astrologer. "
-            "You receive a compact JSON birth chart and answer questions about it.\n\n"
+            "You are Jyotisha-AI, an expert Vedic astrologer and empathetic counselor.\n"
+            "You receive a computed JSON birth chart and classical scripture references (RAG).\n"
+            "Your purpose is to provide deeply insightful, grounded readings that empower the native.\n\n"
 
-            "## ABSOLUTE RULES — NEVER VIOLATE\n"
-            "1. NEVER predict death, fatal disease, or irreversible ruin for any person.\n"
-            "2. If a user asks about death, fatal illness, financial ruin, or tragedy: "
-            "gently decline that specific aspect, state 'Jyotish is a tool for "
-            "self-awareness, not fatalism,' then pivot to analyzing the chart's "
-            "resilience (e.g., 6th or 8th house strengths, protective yogas).\n"
-            "3. Frame every Dosha as an energetic pattern or psychological tendency. "
-            "Always end a Dosha note with a practical reframe or remedy.\n"
-            "4. Ground EVERY statement in the JSON chart provided. "
-            "Do not invent placements, yogas, or house positions.\n"
-            "5. If the chart data does not contain information to answer a question, "
-            "say: 'The chart does not clearly indicate this — I will not speculate.' "
-            "Do not hallucinate an answer.\n\n"
+            "## ABSOLUTE ETHICAL BOUNDARIES\n"
+            "1. NEVER predict death, terminal disease, bankruptcy, or irreversible tragedy.\n"
+            "2. If asked about death, fatality, or catastrophic ruin: gently state that "
+            "'Jyotish is a lamp for self-awareness and conscious living, not fatalistic anxiety.' "
+            "Then pivot constructively to analyzing longevity factors, inner resilience, and protective yogas.\n"
+            "3. Frame every Dosha or challenging placement as an energetic growth pattern with practical remedies.\n"
+            "4. Ground every single claim in the provided chart facts and classical sutras. Never fabricate placements.\n"
+            "5. If chart data is insufficient to answer a question, state: 'The chart does not clearly indicate this.'\n\n"
 
-            "## OUTPUT FORMAT\n"
-            "- Use plain bullet points starting with a dash (-). "
-            "Do NOT use markdown bold (**), headers (##), or code blocks.\n"
-            "- Structure each bullet: [Domain]: [Result/Outcome] "
-            "(brief astrological basis in parentheses at end).\n"
-            "  Example: Career: Leadership role in technical or research fields "
-            "by mid-30s (10th lord Guru in Kendra, Ruchaka Yoga).\n"
-            "- Lead with the RESULT. Do NOT open with 'Because', 'Since', 'Due to'.\n"
-            "- 3 to 5 bullets per section. Be specific about timing and domains.\n"
-            "- Total output under 700 words for Q&A; under 950 for full readings.\n\n"
+            "## DUAL-LAYER EXPLAINABLE OUTPUT FORMAT\n"
+            "Every prediction MUST clearly separate plain human language from technical astrological reasoning:\n\n"
+            "For each section or major point, use this exact structure:\n"
+            "[SECTION: <Domain Name>]\n"
+            "[PREDICTION]: <Clear, compassionate natural language in 2-4 sentences explaining what the user will experience, life themes, and realistic timelines without overwhelming jargon.>\n"
+            "[KUNDLI BASIS]: <Exact technical astrological reasoning: planetary placement, house lordship, dignity, active dasha lord, and classical sutra citation.>\n"
+            "[PRACTICAL GUIDANCE]: <Concrete constructive action, psychological reframe, or lifestyle remedy.>\n\n"
 
-            "## TECHNICAL CONVENTIONS\n"
-            "- Planet names: Surya, Chandra, Mangal, Budha, Guru, Shukra, Shani, Rahu, Ketu.\n"
-            "- Houses: Bhava 1 to 12 (Bhava 10 = career, Bhava 7 = partnership).\n"
-            "- Dasha: always state both Mahadasha and Antardasha lords and "
-            "what houses they rule natally.\n"
-            "- Yogas: name the yoga, state the practical outcome, then note the "
-            "forming condition in parentheses.\n"
-            "- Doshas: name the pattern, give a constructive reframe, suggest "
-            "one practical remedy — never frame as a curse.\n\n"
+            "Example:\n"
+            "[SECTION: CAREER]\n"
+            "[PREDICTION]: You possess strong natural executive and problem-solving abilities that lead to leadership roles in technological, strategic, or advisory sectors by your early-to-mid 30s. The current cycle highlights professional expansion and recognition from senior authorities.\n"
+            "[KUNDLI BASIS]: 10th lord Guru placed in Kendra in own sign forming Hamsa Yoga; Surya exalted in 1st house; active Mahadasha of Guru ruling 9th and 12th Bhavas (BPHS Ch. 24, Sloka 10).\n"
+            "[PRACTICAL GUIDANCE]: Channel your natural initiative into mentorship and cross-functional team leadership; wear yellow tones and honor teachers on Thursdays.\n\n"
 
-            "## WELLBEING FRAMING EXAMPLES\n"
-            "Correct: 'This placement creates intense drive — "
-            "channelled constructively it excels in leadership.'\n"
-            "Incorrect: 'This placement will cause suffering and loss.'"
+            "## STYLE GUIDELINES\n"
+            "- Write with empathy, dignity, and practical psychological realism.\n"
+            "- NEVER output raw unformatted text blocks. Always adhere to the [SECTION], [PREDICTION], [KUNDLI BASIS], and [PRACTICAL GUIDANCE] tags."
         )
 
     # ── User Prompts ──────────────────────────────────────────────────────────
     @staticmethod
-    def user_prompt_full(chart_json_str):
+    def user_prompt_full(chart_json_str, classical_doctrine=""):
+        doctrine_block = ""
+        if classical_doctrine:
+            doctrine_block = f"\n{classical_doctrine}\n"
+
         return (
-            f"Chart data:\n{chart_json_str}\n\n"
-            "Provide a complete Jyotish reading. Use plain dash bullets. "
-            "No markdown bold or headers. Each bullet: lead with the result, "
-            "astrological basis in parentheses at end.\n\n"
-            "Sections:\n"
-            "1. PERSONALITY - Lagna and Lagnesh: core nature and temperament\n"
-            "2. CAREER - 10th Bhava and its lord: fields, roles, peak timing\n"
-            "3. WEALTH - 2nd/11th lords, Dhana Yogas: income sources and periods\n"
-            "4. RELATIONSHIPS - 7th lord, Shukra: partner qualities, timing\n"
-            "5. CURRENT DASHA - Active Mahadasha + Antardasha: themes and events now\n"
-            "6. HEALTH - Surya, Lagna, 6th/8th Bhavas: areas to nurture\n"
-            "7. KEY PATTERNS - Top 2 Yogas (practical outcome), "
-            "top 1 Dosha as growth pattern with one remedy\n\n"
-            "3 to 5 bullets per section. Specific, practical, result-first. "
-            "Plain text only."
+            f"Chart Data:\n{chart_json_str}\n"
+            f"{doctrine_block}\n"
+            "Provide a comprehensive Vedic Astrology Life Reading structured in the Dual-Layer Explainable format.\n"
+            "Cover these 6 core domains:\n"
+            "1. [SECTION: PERSONALITY & LIFE PATH] (Lagna, Lagnesh, core temperament)\n"
+            "2. [SECTION: CAREER & CALLING] (10th Bhava, 10th Lord, vocational timing)\n"
+            "3. [SECTION: WEALTH & PROSPERITY] (2nd/11th Bhavas, Dhana Yogas, revenue streams)\n"
+            "4. [SECTION: RELATIONSHIPS & MARRIAGE] (7th Bhava, 7th Lord, Venus/Jupiter significators)\n"
+            "5. [SECTION: CURRENT DASHA TIMELINE] (Active Mahadasha + Antardasha, themes active now)\n"
+            "6. [SECTION: WELLBEING & KEY YOGAS] (Vitality, top Yogas & Dosha reframing with practical remedies)\n\n"
+            "Ensure every section contains [PREDICTION], [KUNDLI BASIS], and [PRACTICAL GUIDANCE]."
         )
 
     @staticmethod
-    def user_prompt_qa(chart_json_str, question, context_summary=None):
+    def user_prompt_qa(chart_json_str, question, context_summary=None, classical_doctrine=""):
         ctx_prefix = ""
         if context_summary:
             ctx_prefix = (
-                f"[Context established from earlier turns for this chart]:\n"
+                f"[Prior Consultation Context for this Native]:\n"
                 f"{context_summary}\n\n"
             )
+        doctrine_block = ""
+        if classical_doctrine:
+            doctrine_block = f"{classical_doctrine}\n\n"
+
         return (
-            f"Chart data:\n{chart_json_str}\n\n"
+            f"Chart Data:\n{chart_json_str}\n\n"
+            f"{doctrine_block}"
             f"{ctx_prefix}"
-            f"Question: {question}\n\n"
-            "Answer with specific predictions — results first, astrological basis "
-            "in parentheses. Use plain dash bullets. No markdown. "
-            "3 to 5 bullets. Concrete and actionable. Under 400 words."
+            f"Native's Question: {question}\n\n"
+            "Answer the question using the Dual-Layer Explainable format:\n"
+            "[SECTION: <Relevant Domain>]\n"
+            "[PREDICTION]: <Clear natural language prediction and practical life answer for the user>\n"
+            "[KUNDLI BASIS]: <Exact astrological calculation, house lordships, dignity, dasha timing, and classical rule citation>\n"
+            "[PRACTICAL GUIDANCE]: <Actionable advice, psychological reframe, or constructive remedy>"
         )
+
+    @staticmethod
+    def user_prompt_deep_dive(chart_json_str, domain, classical_doctrine=""):
+        """Focused, comprehensive deep dive into a specific life domain."""
+        doctrine_block = ""
+        if classical_doctrine:
+            doctrine_block = f"\n{classical_doctrine}\n"
+
+        domain_titles = {
+            "CAREER": "CAREER, BUSINESS & VOCATIONAL TIMELINE",
+            "FINANCE": "WEALTH, FINANCIAL ACUMEN & ASSET ACCUMULATION",
+            "RELATIONSHIPS": "MARRIAGE, LIFE PARTNER & EMOTIONAL ALLIANCES",
+            "HEALTH": "VITALITY, RESILIENCE & PHYSICAL WELLBEING",
+            "TIMING_DASHA": "VIMSHOTTARI DASHA CYCLES & LIFE MILESTONES",
+            "REMEDIES": "HOLISTIC UPAYAS, GEMSTONES & CONSTRUCTIVE REMEDIES",
+        }
+        title = domain_titles.get(domain, f"{domain} DEEP DIVE")
+
+        return (
+            f"Chart Data:\n{chart_json_str}\n"
+            f"{doctrine_block}\n"
+            f"Provide an in-depth specialized consultation focused specifically on [SECTION: {title}].\n"
+            "Elaborate thoroughly with 3 distinct thematic facets:\n"
+            "1. Current Life Phase & Opportunities\n"
+            "2. Critical Timing, Peak Windows & Potential Roadblocks\n"
+            "3. Strategic Action Plan & Astrological Remedies\n\n"
+            "Format every facet strictly using:\n"
+            "[PREDICTION]: <Detailed natural language advice and foresight>\n"
+            "[KUNDLI BASIS]: <Detailed astrological placements, aspects, and classical grounding>\n"
+            "[PRACTICAL GUIDANCE]: <Concrete life advice and remedies>"
+        )
+
+    @staticmethod
+    def user_prompt_continuation(prior_text):
+        """Resume generation when truncated by context/token bounds."""
+        cutoff_sample = prior_text[-300:] if len(prior_text) > 300 else prior_text
+        return (
+            "The previous response was paused due to token length.\n"
+            f"Prior text ended at:\n\"...{cutoff_sample}\"\n\n"
+            "Please continue generation seamlessly from this exact cutoff point. "
+            "Do NOT repeat prior text. Continue the Dual-Layer format to the conclusion."
+        )
+
+    @staticmethod
+    def extract_temporal_context(dashas, grahas, question):
+        """
+        Detects specific years, past periods, or historical dasha inquiries in the question
+        and generates an exact grounded retrospective timeline summary.
+        """
+        import re
+        if not dashas:
+            return ""
+
+        q_lower = question.lower()
+        now = datetime.now()
+
+        # Check for 4-digit years (e.g. 1970 to 2050)
+        years_found = [int(y) for y in re.findall(r'\b(19\d\d|20\d\d)\b', question)]
+
+        records = []
+        for yr in sorted(set(years_found)):
+            matched_md = None
+            matched_ad = None
+            for md in dashas:
+                if md["start"].year <= yr <= md["end"].year:
+                    matched_md = md
+                    for ad in md.get("antardasha", []):
+                        if ad["start"].year <= yr <= ad["end"].year:
+                            matched_ad = ad
+                            break
+                    break
+
+            if matched_md:
+                md_lord = matched_md["lord"]
+                md_pd = grahas.get(md_lord, {})
+                ad_str = ""
+                if matched_ad:
+                    ad_lord = matched_ad["lord"]
+                    ad_pd = grahas.get(ad_lord, {})
+                    ad_str = f" with {ad_lord} Antardasha (Bhava {ad_pd.get('bhava','?')})"
+                records.append(
+                    f"• In Year {yr}: Native was running {md_lord} Mahadasha (Bhava {md_pd.get('bhava','?')}, "
+                    f"{sthiti(md_lord, md_pd.get('rashi',0))}){ad_str}."
+                )
+
+        # Check for past/previous keywords
+        past_keywords = [
+            "previous dasha", "past dasha", "previous mahadasha", "past period",
+            "last dasha", "prior dasha", "before this", "earlier years", "childhood",
+            "how was my life", "past life", "previous years", "earlier life"
+        ]
+        if any(pk in q_lower for pk in past_keywords) and not records:
+            cur_idx = None
+            for idx, md in enumerate(dashas):
+                if md["start"] <= now <= md["end"]:
+                    cur_idx = idx
+                    break
+            if cur_idx is not None and cur_idx > 0:
+                prev_md = dashas[cur_idx - 1]
+                prev_pd = grahas.get(prev_md["lord"], {})
+                records.append(
+                    f"• Previous Mahadasha: {prev_md['lord']} was active from {prev_md['start'].strftime('%b %Y')} "
+                    f"to {prev_md['end'].strftime('%b %Y')} ({prev_md['varsh']:.1f} years). "
+                    f"{prev_md['lord']} rules Bhava {prev_pd.get('bhava','?')} in {sthiti(prev_md['lord'], prev_pd.get('rashi',0))}."
+                )
+
+        if records:
+            return (
+                "### HISTORICAL DASHA & RETROSPECTIVE TIMELINE RECORD:\n"
+                + "\n".join(records)
+                + "\nExplain what life was like during that specified duration based on these exact dasha lords."
+            )
+        return ""
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -475,7 +606,7 @@ class ConversationManager:
     def is_current_chart(self, chart_id):
         return self.active_chart_hash == chart_id
 
-    def build_qa_prompt(self, raw_chart_json_str, question):
+    def build_qa_prompt(self, raw_chart_json_str, question, classical_doctrine=""):
         """
         Construct domain-optimized, context-compressed prompt.
         Returns (compressed_prompt, domain, estimated_tokens).
@@ -492,6 +623,7 @@ class ConversationManager:
             chart_json_str=compressed_chart,
             question=question,
             context_summary=ctx_summary if ctx_summary else None,
+            classical_doctrine=classical_doctrine,
         )
         return prompt, domain
 

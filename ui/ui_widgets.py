@@ -442,3 +442,117 @@ def deser_dt(s):
         try: return datetime.strptime(s,fmt)
         except: continue
     raise ValueError(f"Cannot parse date '{s}' (expected {_DT_FMT}).")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STREAMING STRUCTURED RENDERER (Dual-Layer Explainable AI)
+# ══════════════════════════════════════════════════════════════════════════════
+class StreamingStructuredRenderer:
+    """
+    Progressively parses incoming LLM stream tokens into high-contrast, dual-layer
+    styled segments (Domain headers, Predictions, Kundli Alignment, Classical Sutras).
+    Avoids monolithic text walls and allows interactive view filtering.
+    """
+
+    def __init__(self, text_widget, scroll_cb=None):
+        self.text_widget = text_widget
+        self.scroll_cb = scroll_cb
+        self.buffer = ""
+        self.active_tag = "answer"
+
+    def reset(self):
+        self.buffer = ""
+        self.active_tag = "answer"
+
+    def feed(self, token):
+        if not token:
+            return
+        self.buffer += token
+        self._drain()
+
+    def _drain(self):
+        while "\n" in self.buffer:
+            line, self.buffer = self.buffer.split("\n", 1)
+            self._render_line(line)
+
+    def _render_line(self, line):
+        clean = line.strip()
+        if not clean:
+            self._insert("\n", "answer")
+            return
+
+        # 1. Section Header: [SECTION: CAREER] or ### CAREER
+        if clean.startswith("[SECTION:") or clean.startswith("### "):
+            title = clean.replace("[SECTION:", "").replace("###", "").rstrip("]").strip()
+            self._insert(f"\n\n❖  {title.upper()}\n", "section_header")
+            return
+
+        # 2. Prediction: [PREDICTION]: ... or • PREDICTION: ...
+        if clean.startswith("[PREDICTION]:") or clean.startswith("• PREDICTION:"):
+            text = clean.replace("[PREDICTION]:", "").replace("• PREDICTION:", "").strip()
+            self._insert("\n• PREDICTION: ", "pred_badge")
+            self._render_inline(f"{text}\n", "prediction")
+            return
+
+        # 3. Kundli Basis: [KUNDLI BASIS]: ... or ↳ KUNDLI BASIS: ...
+        if clean.startswith("[KUNDLI BASIS]:") or clean.startswith("↳ KUNDLI BASIS:"):
+            text = clean.replace("[KUNDLI BASIS]:", "").replace("↳ KUNDLI BASIS:", "").strip()
+            self._insert("  🪐 KUNDLI ALIGNMENT: ", "basis_badge")
+            self._render_inline(f"{text}\n", "kundli_basis")
+            return
+
+        # 4. Practical Guidance / Remedy: [PRACTICAL GUIDANCE]: ... or [REMEDY]: ...
+        if (clean.startswith("[PRACTICAL GUIDANCE]:") or clean.startswith("[REMEDY]:")
+            or clean.startswith("• REMEDY:") or clean.startswith("↳ REMEDY:")):
+            prefix = "[PRACTICAL GUIDANCE]:" if clean.startswith("[PRACTICAL GUIDANCE]:") else (
+                "[REMEDY]:" if clean.startswith("[REMEDY]:") else (
+                    "• REMEDY:" if clean.startswith("• REMEDY:") else "↳ REMEDY:"
+                )
+            )
+            text = clean[len(prefix):].strip()
+            self._insert("  🌿 ACTIONABLE GUIDANCE: ", "remedy_badge")
+            self._render_inline(f"{text}\n", "remedy")
+            return
+
+        # 5. Classical Sutra: [SUTRA]: ... or ↳ SUTRA: ...
+        if clean.startswith("[SUTRA]:") or clean.startswith("↳ SUTRA:"):
+            text = clean.replace("[SUTRA]:", "").replace("↳ SUTRA:", "").strip()
+            self._insert("  📜 CLASSICAL SUTRA: ", "sutra_badge")
+            self._render_inline(f"{text}\n", "sutra")
+            return
+
+        # 6. Normal text or bullet line
+        self._render_inline(f"{line}\n", "answer")
+
+    def _render_inline(self, text, base_tag):
+        """Render text, parsing **bold** spans if present."""
+        import re
+        if "**" not in text:
+            self._insert(text, base_tag)
+            return
+
+        parts = []
+        last = 0
+        for m in re.finditer(r'\*\*(.+?)\*\*', text, re.DOTALL):
+            if m.start() > last:
+                parts.append((text[last:m.start()], base_tag))
+            parts.append((m.group(1), "answer_bold"))
+            last = m.end()
+        if last < len(text):
+            parts.append((text[last:], base_tag))
+
+        for content, tag in parts:
+            if content:
+                self._insert(content, tag)
+
+    def _insert(self, text, tag):
+        self.text_widget.configure(state="normal")
+        self.text_widget.insert("end", text, tag)
+        self.text_widget.configure(state="disabled")
+        if self.scroll_cb:
+            self.scroll_cb()
+
+    def finish(self):
+        if self.buffer:
+            self._render_line(self.buffer)
+            self.buffer = ""

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "bphs_tanu_1",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 24: Effects of Bhava Lords",
+    "section": "Lagna & Lagnesha",
+    "language": "en-sa",
+    "keywords": ["lagna", "lagnesh", "tanu", "first house", "ascendant", "health", "vitality", "लग्न", "तनु"],
+    "text": "If the Lagnesha is in the 1st house itself, the native will be endowed with physical happiness, constitutional strength, natural valor, leadership, and independence. The native will be steadfast in resolve and achieve self-made fortune through personal enterprise."
+  },
+  {
+    "id": "bphs_dhana_2",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 24: Effects of Bhava Lords",
+    "section": "2nd House & Wealth",
+    "language": "en-sa",
+    "keywords": ["dhana", "wealth", "speech", "family", "treasury", "second house", "धन", "वाक्"],
+    "text": "The 2nd house governs accumulated liquid assets, speech, family legacy, and early nourishment. When the 2nd lord combines with benefic planets or occupies the 11th house, the native generates wealth from diverse streams and enjoys honor in society."
+  },
+  {
+    "id": "bphs_karma_10",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 24: Effects of Bhava Lords",
+    "section": "10th House & Career",
+    "language": "en-sa",
+    "keywords": ["karma", "career", "tenth house", "profession", "vocation", "leadership", "कर्म", "राज्य"],
+    "text": "The 10th house is the zenith of the zodiac, governing vocation, societal authority, reputation, and public service. A strong 10th lord in a Kendra (1, 4, 7, 10) or Trikona (5, 9) confers enduring occupational stability, royal/governmental recognition, and high administrative status."
+  },
+  {
+    "id": "bphs_dasha_principles",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 47: Vimshottari Dasha Evaluation",
+    "section": "General Principles",
+    "language": "en-sa",
+    "keywords": ["dasha", "vimshottari", "timing", "mahadasha", "antardasha", "दशा", "विंशोत्तरी"],
+    "text": "During the Mahadasha of a planet, results manifest in accordance with its natural significations (Karakatva), its functional house rulership, and its sthiti (dignity and placement). Benefics ruling Kendras and Trikonas produce prosperity and renown, while malefic lords require spiritual discipline, mindful action, and constructive remedies."
+  },
+  {
+    "id": "bphs_yogas_raja",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 34: Raja Yogas",
+    "section": "Kendra-Trikona Lordship",
+    "language": "en-sa",
+    "keywords": ["raja yoga", "kendra", "trikona", "dharma karmadhipati", "success", "राजयोग"],
+    "text": "The Kendras are the houses of Lord Vishnu (effort, sustenance, structure) and the Trikonas are the houses of Goddess Lakshmi (grace, fortune, wisdom). The combination, mutual aspect, or parivartana (exchange) of a Kendra lord and a Trikona lord forms an exalted Raja Yoga, elevating the native to professional prominence regardless of birth circumstance."
+  },
+  {
+    "id": "bphs_remedies_upaya",
+    "work": "Brihat Parashara Hora Shastra",
+    "author": "Maharishi Parashara",
+    "chapter": "Chapter 84: Remedial Measures for Grahas",
+    "section": "Upayas & Shanti",
+    "language": "en-sa",
+    "keywords": ["remedies", "upaya", "shanti", "mantra", "charity", "gemstone", "उपाय", "शान्ति"],
+    "text": "Planetary afflictions and challenging dasha periods are neutralized through conscious behavioral discipline (samyama), recitation of sacred vibrations (Gayatri and Beej mantras), charitable service (dana to those in need), and fostering psychological virtues aligned with the afflicted graha."
+  }
+]

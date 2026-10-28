@@ -36,6 +36,8 @@ from core.constants import (
     XP_BG, XP_SURFACE, XP_BORDER, XP_FIELD, XP_BLUE, XP_BLUE2,
     XP_BTN, XP_GRAY, XP_WARN, XP_WARN_FG, XP_TEXT_D, XP_TEXT_M,
     ASHTAK_PLANETS,
+    READING_FONTS, READING_DEFAULT_FONT, READING_DEFAULT_SIZE,
+    READING_SIZES, READING_THEMES, OLLAMA_MAX_PREDICT, OLLAMA_MAX_PREDICT_FULL,
 )
 from core.astro_engine import compute_chart, compute_transits, SWE_OK
 from core.vedic_engine import (
@@ -53,14 +55,15 @@ from core.vedic_engine import (
     gemstone_prescription,
     compute_pratyantardasha_for_ad,
 )
-from ai.prediction_engine import PredictionEngine, ConversationManager
+from ai.prediction_engine import PredictionEngine, ConversationManager, ContextCompressor
 from ai.ollama_engine import OllamaEngine
+from ai.rag_engine import ClassicalRAG
 from ui.ui_widgets import (
     xp_style, titled_frame, xp_labelframe,
     XPGradientHeader, XPStatusBar, XPTooltip,
     RashiChart, Geocoder,
     ser_dt, deser_dt, ensure_utf8_stdout, _resolve_devanagari_font,
-    sort_treeview_col,
+    sort_treeview_col, StreamingStructuredRenderer,
 )
 
 MONTHS = {
@@ -126,6 +129,18 @@ class JyotishApp:
         self._streaming               = False
         self._has_cleared_placeholder = False
         self._render_buf              = ""
+        self._last_completed_text     = ""
+        self._last_done_reason        = "stop"
+        self._last_question           = ""
+        self._last_is_full            = True
+        self._last_domain             = "FULL_ANALYSIS"
+
+        # ── Reading typography & view controls ─────────────────────────────
+        self.read_font_family_var     = tk.StringVar(value=READING_DEFAULT_FONT)
+        self.read_font_size_var       = tk.IntVar(value=READING_DEFAULT_SIZE)
+        self.read_theme_var           = tk.StringVar(value="Dark Studio")
+        self.read_view_mode_var       = tk.StringVar(value="Dual View (Full)")
+        self.show_thinking_var        = tk.BooleanVar(value=False)
 
         xp_style(root)
         self._build()
@@ -143,6 +158,10 @@ class JyotishApp:
         self.root.bind("<Control-l>", lambda e: self._load_kundali())
         self.root.bind("<Control-L>", lambda e: self._load_kundali())
         self.root.bind("<F5>",        lambda e: self._refresh_transits())
+        self.root.bind("<Control-plus>",  lambda e: self._zoom_in())
+        self.root.bind("<Control-equal>", lambda e: self._zoom_in())
+        self.root.bind("<Control-minus>", lambda e: self._zoom_out())
+        self.root.bind("<Control-0>",     lambda e: self._zoom_reset())
 
     # ══════════════════════════════════════════════════════════════════════
     #  BUILD LAYOUT
@@ -466,7 +485,7 @@ class JyotishApp:
         pn.pack(fill="both", expand=True, padx=4, pady=3)
 
         lo, li = titled_frame(pn, "Classical Gemstone Prescriptions (BPHS Safety Filter)", padx=4, pady=4)
-        pn.add(lo, stretch="always")
+        pn.add(lo)
 
         cols = ("Planet", "Prescription", "Primary Gem", "Weight", "Metal", "Finger", "Day")
         self.gem_tree = ttk.Treeview(li, columns=cols, show="headings", style="XP.Treeview", height=12)
@@ -482,7 +501,7 @@ class JyotishApp:
         self.gem_tree.tag_configure("contraindicated", background="#FEE2E2", foreground="#7F1D1D")
 
         ro, ri = titled_frame(pn, "Prescription Details & Safe Remedies", padx=4, pady=4)
-        pn.add(ro, stretch="always")
+        pn.add(ro)
         self.gem_detail_text = tk.Text(ri, wrap="word", bg=XP_FIELD, fg="#111111",
                                        font=("Tahoma", 9), relief="flat", bd=1, state="disabled")
         self.gem_detail_text.pack(fill="both", expand=True, padx=2, pady=2)
@@ -650,74 +669,398 @@ class JyotishApp:
         self.transit_tree.tag_configure("normal", background="#FFFFFF", foreground="#000000")
 
     def _tab_phaladesh(self):
-        f = tk.Frame(self.nb,bg=XP_BG); self.nb.add(f,text="AI Reading")
+        f = tk.Frame(self.nb, bg=XP_BG)
+        self.nb.add(f, text="AI Reading")
 
-        # Ollama status strip
-        sb_f = tk.Frame(f,bg=XP_SURFACE,relief="flat",bd=1)
-        sb_f.pack(fill="x",padx=6,pady=(5,2))
-        self.ollama_dot = tk.Label(sb_f,text="\u25cf",bg=XP_SURFACE,fg="#52525B",font=("Tahoma",12))
-        self.ollama_dot.pack(side="left",padx=(6,2),pady=3)
+        # ── Ollama status strip ───────────────────────────────────────────────
+        sb_f = tk.Frame(f, bg=XP_SURFACE, relief="flat", bd=1)
+        sb_f.pack(fill="x", padx=6, pady=(4, 2))
+        self.ollama_dot = tk.Label(sb_f, text="\u25cf", bg=XP_SURFACE, fg="#52525B", font=("Tahoma", 12))
+        self.ollama_dot.pack(side="left", padx=(6, 2), pady=2)
         self.ollama_status_var = tk.StringVar(value="Checking Ollama...")
-        tk.Label(sb_f,textvariable=self.ollama_status_var,bg=XP_SURFACE,
-                 font=("Tahoma",9,"bold"),fg=XP_TEXT_M).pack(side="left",pady=3)
-        ttk.Button(sb_f,text="Refresh",style="XP.TButton",
-                   command=lambda: threading.Thread(target=self._check_ollama_bg,daemon=True).start()
-                   ).pack(side="right",padx=6,pady=3)
+        tk.Label(sb_f, textvariable=self.ollama_status_var, bg=XP_SURFACE,
+                 font=("Tahoma", 9, "bold"), fg=XP_TEXT_M).pack(side="left", pady=2)
+        ttk.Button(sb_f, text="Refresh", style="XP.TButton",
+                   command=lambda: threading.Thread(target=self._check_ollama_bg, daemon=True).start()
+                   ).pack(side="right", padx=6, pady=2)
 
-        mc = tk.Frame(f,bg=XP_BG); mc.pack(fill="x",padx=6,pady=(2,0))
-        tk.Label(mc,text="Model:",bg=XP_BG,font=("Tahoma",9),fg=XP_TEXT_M).pack(side="left")
-        self.model_combo = ttk.Combobox(mc,textvariable=self.ollama_model_var,
-                                        width=28,style="XP.TCombobox")
-        self.model_combo.pack(side="left",padx=4)
-        tk.Label(mc,text="Offline inference  ·  Local LLM  ·  GPU optional",
-                 bg=XP_BG,font=("Tahoma",8),fg=XP_TEXT_M).pack(side="left")
+        # ── Model selection row ───────────────────────────────────────────────
+        mc = tk.Frame(f, bg=XP_BG)
+        mc.pack(fill="x", padx=6, pady=(2, 2))
+        tk.Label(mc, text="Model:", bg=XP_BG, font=("Tahoma", 9), fg=XP_TEXT_M).pack(side="left")
+        self.model_combo = ttk.Combobox(mc, textvariable=self.ollama_model_var,
+                                        width=24, style="XP.TCombobox")
+        self.model_combo.pack(side="left", padx=4)
+        tk.Label(mc, text="Local GPU inference  ·  Offline  ·  7B/9B compatible",
+                 bg=XP_BG, font=("Tahoma", 8), fg=XP_TEXT_M).pack(side="left", padx=4)
 
-        self.setup_frame = tk.Frame(f,bg=XP_SURFACE,relief="flat",bd=1)
+        # ── Reading Experience Toolbar (Font, Size, Theme, View Mode) ─────────
+        read_tb = tk.Frame(f, bg=XP_SURFACE, relief="flat", bd=1)
+        read_tb.pack(fill="x", padx=6, pady=(2, 2))
+
+        # Typography: Font Family & Size
+        tk.Label(read_tb, text="🔤 Font:", bg=XP_SURFACE, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="left", padx=(6, 2), pady=3)
+        self.font_combo = ttk.Combobox(read_tb, textvariable=self.read_font_family_var,
+                                        values=READING_FONTS, width=11, state="readonly", style="XP.TCombobox")
+        self.font_combo.pack(side="left", padx=2, pady=3)
+        self.font_combo.bind("<<ComboboxSelected>>", self._on_reading_typography_changed)
+
+        ttk.Button(read_tb, text="A-", width=3, style="XP.TButton", command=self._zoom_out).pack(side="left", padx=(4, 1), pady=3)
+        self.size_combo = ttk.Combobox(read_tb, textvariable=self.read_font_size_var,
+                                        values=READING_SIZES, width=3, state="readonly", style="XP.TCombobox")
+        self.size_combo.pack(side="left", padx=1, pady=3)
+        self.size_combo.bind("<<ComboboxSelected>>", self._on_reading_typography_changed)
+        ttk.Button(read_tb, text="A+", width=3, style="XP.TButton", command=self._zoom_in).pack(side="left", padx=(1, 6), pady=3)
+
+        # Theme Selector
+        tk.Label(read_tb, text="🎨 Theme:", bg=XP_SURFACE, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="left", padx=(4, 2), pady=3)
+        self.theme_combo = ttk.Combobox(read_tb, textvariable=self.read_theme_var,
+                                         values=list(READING_THEMES.keys()), width=13, state="readonly", style="XP.TCombobox")
+        self.theme_combo.pack(side="left", padx=2, pady=3)
+        self.theme_combo.bind("<<ComboboxSelected>>", self._on_reading_typography_changed)
+
+        # View Mode Selector (Dual View vs Client Only vs Astrologer)
+        tk.Label(read_tb, text="👁 View:", bg=XP_SURFACE, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="left", padx=(6, 2), pady=3)
+        self.view_combo = ttk.Combobox(read_tb, textvariable=self.read_view_mode_var,
+                                        values=["Dual View (Full)", "Client (Predictions Only)", "Astrologer (Kundli Focus)"],
+                                        width=21, state="readonly", style="XP.TCombobox")
+        self.view_combo.pack(side="left", padx=2, pady=3)
+        self.view_combo.bind("<<ComboboxSelected>>", self._on_view_mode_changed)
+
+        # Thinking / CoT toggle
+        ttk.Checkbutton(read_tb, text="Show Thinking", variable=self.show_thinking_var,
+                        command=self._on_thinking_toggle, style="XP.TCheckbutton").pack(side="right", padx=6, pady=3)
+
+        # Setup frame when Ollama is offline
+        self.setup_frame = tk.Frame(f, bg=XP_SURFACE, relief="flat", bd=1)
         tk.Label(self.setup_frame,
             text=("Ollama is not running.\n\n"
                   "  1. Install Ollama: https://ollama.ai\n"
-                  "  2. ollama create qwen2.5:7b -f Modelfile\n"
-                  "  3. ollama serve\n  4. Click Refresh above."),
-            bg=XP_SURFACE,font=("Tahoma",9),fg=XP_TEXT_D,anchor="w",justify="left"
-        ).pack(fill="both",padx=10,pady=8)
+                  "  2. ollama run qwen2.5:7b\n"
+                  "  3. Click Refresh above."),
+            bg=XP_SURFACE, font=("Tahoma", 9), fg=XP_TEXT_D, anchor="w", justify="left"
+        ).pack(fill="both", padx=10, pady=8)
 
-        ar = tk.Frame(f,bg=XP_BG); ar.pack(fill="x",padx=6,pady=(4,0))
-        ttk.Button(ar,text="⚡ Generate Full Reading",style="Blue.TButton",
-                   command=self._auto_analyse).pack(side="left",padx=(0,6),ipady=4)
-        self.stop_btn = ttk.Button(ar,text="\u25a0 Stop",style="Red.TButton",
+        # ── Primary Actions & Domain Deep-Dive Row ─────────────────────────────
+        ar = tk.Frame(f, bg=XP_BG)
+        ar.pack(fill="x", padx=6, pady=(3, 1))
+
+        ttk.Button(ar, text="⚡ Full Life Reading", style="Blue.TButton",
+                   command=self._auto_analyse).pack(side="left", padx=(0, 4), ipady=3)
+        self.continue_btn = ttk.Button(ar, text="▶ Continue Generation", style="XP.TButton",
+                                       command=self._continue_generation)
+        self.stop_btn = ttk.Button(ar, text="\u25a0 Stop", style="Red.TButton",
                                    command=self._stop_generation)
 
-        co,ci = titled_frame(f,"Vedic Predictions & Q&A",padx=5,pady=4)
-        co.pack(fill="both",expand=True,padx=5,pady=3)
-        self.chat = tk.Text(ci,font=("Tahoma",9),bg="#FFFFFE",fg="#111111",
-                            wrap="word",height=15,relief="flat",bd=1,state="disabled")
-        chat_sb = ttk.Scrollbar(ci,orient="vertical",command=self.chat.yview)
+        # Domain quick-dive buttons
+        tk.Label(ar, text="Deep Dives:", bg=XP_BG, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="left", padx=(10, 4))
+        ttk.Button(ar, text="💼 Career", style="XP.TButton",
+                   command=lambda: self._start_deep_dive("CAREER")).pack(side="left", padx=2)
+        ttk.Button(ar, text="💰 Wealth", style="XP.TButton",
+                   command=lambda: self._start_deep_dive("FINANCE")).pack(side="left", padx=2)
+        ttk.Button(ar, text="❤️ Relationships", style="XP.TButton",
+                   command=lambda: self._start_deep_dive("RELATIONSHIPS")).pack(side="left", padx=2)
+        ttk.Button(ar, text="⏳ Timing", style="XP.TButton",
+                   command=lambda: self._start_deep_dive("TIMING_DASHA")).pack(side="left", padx=2)
+        ttk.Button(ar, text="🌿 Remedies", style="XP.TButton",
+                   command=lambda: self._start_deep_dive("REMEDIES")).pack(side="left", padx=2)
+
+        # ── Predictions & Reading Container ───────────────────────────────────
+        co, ci = titled_frame(f, "Vedic Predictions & Dual-Layer Consultation", padx=5, pady=4)
+        co.pack(fill="both", expand=True, padx=5, pady=3)
+
+        # 1. Top Section: Conversation History (Dedicated Frame)
+        history_frame = tk.Frame(ci, bg=XP_BG)
+        history_frame.pack(side="top", fill="both", expand=True)
+
+        self.chat = tk.Text(history_frame, wrap="word", height=14, relief="flat", bd=1,
+                            padx=16, pady=12, spacing1=4, spacing2=3, spacing3=6, state="disabled")
+        chat_sb = ttk.Scrollbar(history_frame, orient="vertical", command=self.chat.yview)
         self.chat.configure(yscrollcommand=chat_sb.set)
-        self.chat.pack(side="left",fill="both",expand=True)
-        chat_sb.pack(side="right",fill="y")
+        self.chat.pack(side="left", fill="both", expand=True)
+        chat_sb.pack(side="right", fill="y")
+
+        # Shortcuts on chat widget for zoom
+        self.chat.bind("<Control-plus>", lambda e: self._zoom_in())
+        self.chat.bind("<Control-equal>", lambda e: self._zoom_in())
+        self.chat.bind("<Control-minus>", lambda e: self._zoom_out())
+        self.chat.bind("<Control-0>", lambda e: self._zoom_reset())
+
         self._configure_chat_tags()
 
-        ir = tk.Frame(ci,bg=XP_BG); ir.pack(fill="x",pady=(4,0))
-        tk.Label(ir,text="Enter ↵ send  ·  Shift+↵ newline",
-                 bg=XP_BG,fg=XP_TEXT_M,font=("Tahoma",7)).pack(side="bottom",anchor="w",padx=2)
-        self.chat_in = tk.Text(ir,height=3,font=("Tahoma",9),
-                               bg="#FFFFFF",fg="#000000",wrap="word",relief="flat",bd=1)
-        self.chat_in.pack(side="left",fill="x",expand=True,padx=(0,3))
-        self.chat_in.bind("<Return>",self._on_chat_enter)
-        ttk.Button(ir,text="Ask",style="Blue.TButton",command=self._send).pack(side="right",anchor="n")
-        ttk.Button(ir,text="Clear",style="XP.TButton",command=self._clear_chat).pack(side="right",padx=3,anchor="n")
+        # 2. Bottom Section: Chat Input Deck (Messaging / Chatbot Layout)
+        # Shifted cleanly below the conversation history; resilient to font zoom changes
+        input_deck = tk.Frame(ci, bg=XP_SURFACE, relief="flat", bd=1)
+        input_deck.pack(side="bottom", fill="x", pady=(6, 2))
+
+        input_row = tk.Frame(input_deck, bg=XP_SURFACE)
+        input_row.pack(fill="x", padx=6, pady=(6, 4))
+
+        # Input text area with vertical scrollbar for long messages
+        input_entry_frame = tk.Frame(input_row, bg=XP_SURFACE)
+        input_entry_frame.pack(side="left", fill="both", expand=True, padx=(0, 6))
+
+        self.chat_in = tk.Text(input_entry_frame, height=3, font=("Tahoma", 9),
+                               bg="#FFFFFF", fg="#000000", wrap="word", relief="flat", bd=1,
+                               padx=8, pady=6)
+        chat_in_sb = ttk.Scrollbar(input_entry_frame, orient="vertical", command=self.chat_in.yview)
+        self.chat_in.configure(yscrollcommand=chat_in_sb.set)
+        self.chat_in.pack(side="left", fill="both", expand=True)
+        chat_in_sb.pack(side="left", fill="y")
+        self.chat_in.bind("<Return>", self._on_chat_enter)
+
+        # Right-stacked action buttons: Ask (Send) on top, Clear below
+        btn_stack = tk.Frame(input_row, bg=XP_SURFACE)
+        btn_stack.pack(side="right", fill="y")
+
+        ttk.Button(btn_stack, text="Ask ↵", style="Blue.TButton", command=self._send).pack(fill="x", ipady=3, pady=(0, 3))
+        ttk.Button(btn_stack, text="Clear", style="XP.TButton", command=self._clear_chat).pack(fill="x", ipady=1)
+
+        # Status & hint bar at bottom of deck
+        hint_bar = tk.Frame(input_deck, bg=XP_SURFACE)
+        hint_bar.pack(fill="x", padx=8, pady=(0, 4))
+        tk.Label(hint_bar, text="↵ Send  ·  Shift+↵ Newline  ·  Ctrl++ / Ctrl+- Zoom Font  ·  Clear resets chat",
+                 bg=XP_SURFACE, fg=XP_TEXT_M, font=("Tahoma", 7)).pack(side="left")
 
         self._chat_add("system",
-            "Generate a chart first, then click 'Generate Full Reading' or ask any question.\n"
-            "All inference runs locally on your GPU — no internet required.\n\n")
+            "Generate a birth chart first, then click '⚡ Full Life Reading' or ask any targeted question.\n"
+            "• Natural Language Predictions are formatted for clarity, empathy, and practical life decision-making.\n"
+            "• Kundli Alignment shows the exact planetary calculations, house lordships, and classical sutras grounding each insight.\n"
+            "• Use the toolbar above to change font family, resize text (A- / A+ / Ctrl++), switch themes, or toggle View Modes.\n\n")
 
     def _configure_chat_tags(self):
-        self.chat.tag_configure("question",    foreground=XP_BLUE2, font=("Tahoma",9,"bold"))
-        self.chat.tag_configure("answer",      foreground="#111111", font=("Tahoma",9))
-        self.chat.tag_configure("answer_bold", foreground="#111111", font=("Tahoma",9,"bold"))
-        self.chat.tag_configure("system",      foreground="#71717A", font=("Tahoma",8,"italic"))
-        self.chat.tag_configure("header",      foreground=XP_BLUE2, font=("Tahoma",9,"bold"))
-        self.chat.tag_configure("error",       foreground="#DC2626", font=("Tahoma",9,"italic"))
+        self._apply_reading_font_and_theme()
+
+    def _apply_reading_font_and_theme(self):
+        fam = self.read_font_family_var.get() or READING_DEFAULT_FONT
+        try:
+            sz = int(self.read_font_size_var.get())
+        except (ValueError, TypeError):
+            sz = READING_DEFAULT_SIZE
+
+        theme_name = self.read_theme_var.get()
+        theme = READING_THEMES.get(theme_name, READING_THEMES["Dark Studio"])
+
+        # Base text widget styling
+        self.chat.configure(
+            bg=theme["bg"],
+            fg=theme["fg"],
+            insertbackground=theme["fg"],
+            font=(fam, sz),
+        )
+
+        # ── Dual-Layer Tags ───────────────────────────────────────────
+        # Section Header Banner
+        self.chat.tag_configure("section_header",
+            font=(fam, sz + 3, "bold"),
+            foreground=theme["header_fg"],
+            spacing1=12,
+            spacing3=4,
+        )
+
+        # Natural Language Prediction (Clear, human-accessible life reading)
+        self.chat.tag_configure("pred_badge",
+            font=(fam, sz, "bold"),
+            foreground=theme["header_fg"],
+            spacing1=4,
+        )
+        self.chat.tag_configure("prediction",
+            font=(fam, sz),
+            foreground=theme["pred_fg"],
+            spacing1=2,
+            spacing3=5,
+        )
+
+        # Astrological Kundli Alignment (Technical evidence & planetary factor)
+        self.chat.tag_configure("basis_badge",
+            font=(fam, max(8, sz - 1), "bold"),
+            foreground=theme["basis_fg"],
+            spacing1=3,
+            lmargin1=16,
+            lmargin2=16,
+        )
+        self.chat.tag_configure("kundli_basis",
+            font=(fam, max(8, sz - 1), "italic"),
+            foreground=theme["basis_fg"],
+            background=theme["basis_bg"],
+            spacing1=2,
+            spacing3=5,
+            lmargin1=16,
+            lmargin2=16,
+        )
+
+        # Practical Guidance & Remedies (Constructive, empowering psychological reframe)
+        self.chat.tag_configure("remedy_badge",
+            font=(fam, sz, "bold"),
+            foreground=theme["remedy_fg"],
+            spacing1=3,
+            lmargin1=16,
+            lmargin2=16,
+        )
+        self.chat.tag_configure("remedy",
+            font=(fam, sz),
+            foreground=theme["remedy_fg"],
+            spacing1=2,
+            spacing3=5,
+            lmargin1=16,
+            lmargin2=16,
+        )
+
+        # Classical Sutra Citation (BPHS, Phaladeepika)
+        self.chat.tag_configure("sutra_badge",
+            font=(fam, max(8, sz - 2), "bold"),
+            foreground=theme["sutra_fg"],
+            spacing1=2,
+            lmargin1=16,
+            lmargin2=16,
+        )
+        self.chat.tag_configure("sutra",
+            font=(fam, max(8, sz - 2)),
+            foreground=theme["sutra_fg"],
+            spacing1=2,
+            spacing3=4,
+            lmargin1=16,
+            lmargin2=16,
+        )
+
+        # AI Chain of Thought / Thinking Trace
+        self.chat.tag_configure("thinking",
+            font=("Consolas", max(8, sz - 2)),
+            foreground=theme["thinking_fg"],
+            background=theme["thinking_bg"],
+            spacing1=2,
+            spacing3=3,
+            lmargin1=14,
+            lmargin2=14,
+        )
+
+        # User question & system messages
+        self.chat.tag_configure("question",
+            font=(fam, sz + 1, "bold"),
+            foreground=XP_BLUE2,
+            spacing1=10,
+            spacing3=4,
+        )
+        self.chat.tag_configure("answer",
+            font=(fam, sz),
+            foreground=theme["pred_fg"],
+            spacing1=2,
+            spacing3=2,
+        )
+        self.chat.tag_configure("answer_bold",
+            font=(fam, sz, "bold"),
+            foreground=theme["pred_fg"],
+        )
+        self.chat.tag_configure("system",
+            font=(fam, max(8, sz - 2), "italic"),
+            foreground=theme["system_fg"],
+            spacing1=2,
+            spacing3=2,
+        )
+        self.chat.tag_configure("header",
+            font=(fam, sz + 2, "bold"),
+            foreground=theme["header_fg"],
+            spacing1=8,
+            spacing3=4,
+        )
+        self.chat.tag_configure("error",
+            font=(fam, sz, "italic"),
+            foreground="#EF4444",
+            spacing1=4,
+            spacing3=4,
+        )
+
+        # Apply active view mode (eliding tags if Client View)
+        self._on_view_mode_changed()
+
+    def _on_reading_typography_changed(self, event=None):
+        self._apply_reading_font_and_theme()
+
+    def _on_view_mode_changed(self, event=None):
+        mode = self.read_view_mode_var.get()
+        if mode == "Client (Predictions Only)":
+            self.chat.tag_configure("basis_badge", elide=True)
+            self.chat.tag_configure("kundli_basis", elide=True)
+            self.chat.tag_configure("sutra_badge", elide=True)
+            self.chat.tag_configure("sutra", elide=True)
+        else:
+            self.chat.tag_configure("basis_badge", elide=False)
+            self.chat.tag_configure("kundli_basis", elide=False)
+            self.chat.tag_configure("sutra_badge", elide=False)
+            self.chat.tag_configure("sutra", elide=False)
+
+    def _on_thinking_toggle(self):
+        show = self.show_thinking_var.get()
+        self.chat.tag_configure("thinking", elide=not show)
+
+    def _zoom_in(self):
+        sz = self.read_font_size_var.get()
+        if sz < 24:
+            self.read_font_size_var.set(sz + 1)
+            self._apply_reading_font_and_theme()
+
+    def _zoom_out(self):
+        sz = self.read_font_size_var.get()
+        if sz > 8:
+            self.read_font_size_var.set(sz - 1)
+            self._apply_reading_font_and_theme()
+
+    def _zoom_reset(self):
+        self.read_font_size_var.set(READING_DEFAULT_SIZE)
+        self._apply_reading_font_and_theme()
+
+    def _safe_scroll_to_end(self):
+        try:
+            pos = self.chat.yview()
+            if pos[1] >= 0.95 or pos[1] == 1.0:
+                self.chat.see("end")
+        except Exception:
+            pass
+
+    def _insert_thinking_token(self, token):
+        try:
+            self.chat.configure(state="normal")
+            self.chat.insert("end", token, "thinking")
+            self._safe_scroll_to_end()
+            self.chat.configure(state="disabled")
+        except Exception:
+            pass
+
+    def _start_deep_dive(self, domain):
+        if self._streaming:
+            self._chat_add("system", "Stop current generation first.\n\n")
+            return
+        titles = {
+            "CAREER": "CAREER & VOCATION DEEP DIVE",
+            "FINANCE": "WEALTH & FINANCIAL ACUMEN DEEP DIVE",
+            "RELATIONSHIPS": "RELATIONSHIPS & MARRIAGE DEEP DIVE",
+            "HEALTH": "HEALTH & VITALITY DEEP DIVE",
+            "TIMING_DASHA": "VIMSHOTTARI DASHA & TIMING DEEP DIVE",
+            "REMEDIES": "HOLISTIC UPAYAS & REMEDIES DEEP DIVE",
+        }
+        title = titles.get(domain, f"{domain} DEEP DIVE")
+        self._chat_add("header", f"\n=== {title} ===\n")
+        self._last_completed_text = ""
+        threading.Thread(target=self._run_generation, kwargs={"is_full": False, "domain": domain}, daemon=True).start()
+
+    def _continue_generation(self):
+        if self._streaming:
+            return
+        if not self._last_completed_text:
+            self._chat_add("system", "No prior generation to continue.\n\n")
+            return
+        self._hide_continuation_button()
+        threading.Thread(target=self._run_generation, kwargs={"is_full": False, "is_continuation": True}, daemon=True).start()
+
+    def _show_continuation_banner(self):
+        self._chat_add("system", "\n[ ⏸ Reading reached token ceiling. Click '▶ Continue Generation' above to finish. ]\n\n")
+        self.continue_btn.pack(side="left", padx=4)
+
+    def _hide_continuation_button(self):
+        try:
+            self.continue_btn.pack_forget()
+        except Exception:
+            pass
 
     # ══════════════════════════════════════════════════════════════════════
     #  OLLAMA
@@ -1501,94 +1844,135 @@ class JyotishApp:
     # ══════════════════════════════════════════════════════════════════════
     #  AI GENERATION  (bold streaming)
     # ══════════════════════════════════════════════════════════════════════
-    def _flush_render_buf(self):
-        text = self._render_buf; parts=[]; last=0
-        for m in re.finditer(r'\*\*(.+?)\*\*',text,re.DOTALL):
-            parts.append(("answer",text[last:m.start()]))
-            parts.append(("answer_bold",m.group(1)))
-            last=m.end()
-        remaining=text[last:]
-        op=remaining.rfind("**")
-        if op!=-1:
-            parts.append(("answer",remaining[:op]))
-            self._render_buf=remaining[op:]
+    # ══════════════════════════════════════════════════════════════════════
+    #  AI GENERATION (Dual-Layer Streaming & Thinking Isolation)
+    # ══════════════════════════════════════════════════════════════════════
+    def _run_generation(self, is_full=False, question="", domain=None, is_continuation=False):
+        if not self.grahas:
+            self._chat_add("system", "Generate a birth chart first.\n\n")
+            return
+        if not OllamaEngine.ping():
+            self._chat_add("error", "Ollama is not running. Please launch Ollama and click Refresh.\n\n")
+            return
+
+        model = self.ollama_model_var.get().strip() or "qwen2.5:7b"
+        sys_p = PredictionEngine.system_prompt()
+
+        # Deterministic Classical Knowledge Retrieval (RAG) + Temporal Timeline + BM25 Manuscripts
+        active_domain = domain or (ContextCompressor.detect_domain(question) if question else "GENERAL")
+        classical_sutras = ClassicalRAG.retrieve_context(
+            self.grahas, self.yogas, self.doshas, self.dashas, domain=active_domain, query=question
+        )
+
+        # Historical retrospective analysis for past years or previous dashas
+        temporal_record = PredictionEngine.extract_temporal_context(self.dashas, self.grahas, question) if question else ""
+        if temporal_record:
+            classical_sutras = f"{temporal_record}\n\n{classical_sutras}" if classical_sutras else temporal_record
+
+        if is_continuation:
+            user_p = PredictionEngine.user_prompt_continuation(self._last_completed_text)
+            pred_limit = OLLAMA_MAX_PREDICT
+        elif is_full:
+            user_p = PredictionEngine.user_prompt_full(self.chart_json_str, classical_doctrine=classical_sutras)
+            active_domain = "FULL_ANALYSIS"
+            pred_limit = OLLAMA_MAX_PREDICT_FULL
+        elif domain:
+            user_p = PredictionEngine.user_prompt_deep_dive(self.chart_json_str, domain, classical_doctrine=classical_sutras)
+            pred_limit = OLLAMA_MAX_PREDICT
         else:
-            parts.append(("answer",remaining))
-            self._render_buf=""
-        self.chat.configure(state="normal")
-        for tag,content in parts:
-            if content: self.chat.insert("end",content,tag)
-        self.chat.see("end")
-        self.chat.configure(state="disabled")
+            user_p, active_domain = self.conv_manager.build_qa_prompt(
+                self.chart_json_str, question, classical_doctrine=classical_sutras
+            )
+            pred_limit = OLLAMA_MAX_PREDICT
 
-    def _flush_remaining_buf(self):
-        if self._render_buf:
-            self.chat.configure(state="normal")
-            self.chat.insert("end",self._render_buf,"answer")
-            self.chat.see("end")
-            self.chat.configure(state="disabled")
-            self._render_buf=""
-
-    def _run_generation(self,is_full,question=""):
-        if not self.grahas: self._chat_add("system","Generate a chart first.\n\n"); return
-        if not OllamaEngine.ping(): self._chat_add("error","Ollama is not running.\n\n"); return
-        model  = self.ollama_model_var.get().strip() or "qwen2.5:7b"
-        sys_p  = PredictionEngine.system_prompt()
-        if is_full:
-            user_p = PredictionEngine.user_prompt_full(self.chart_json_str)
-            domain = "FULL_ANALYSIS"
-        else:
-            user_p, domain = self.conv_manager.build_qa_prompt(self.chart_json_str, question)
-
-        self._cancel_event.clear(); self._has_cleared_placeholder=False; self._render_buf=""
+        self._last_question = question
+        self._last_is_full = is_full
+        self._last_domain = active_domain
+        self._cancel_event.clear()
+        self._has_cleared_placeholder = False
         self._current_gen_text = ""
-        self.root.after(0,lambda: self._set_streaming(True))
-        self._chat_add("system","[ Generating... ]\n")
+
+        # Progressively render into chat
+        renderer = StreamingStructuredRenderer(self.chat, scroll_cb=self._safe_scroll_to_end)
+
+        self.root.after(0, lambda: self._set_streaming(True))
+        self.root.after(0, self._hide_continuation_button)
+        if not is_continuation:
+            self._chat_add("system", "[ Consulting Classical Shastras & Generating Dual-Layer Reading... ]\n")
 
         def _token(t):
             if not self._has_cleared_placeholder:
-                self._has_cleared_placeholder=True
-                self.root.after(0,self._remove_thinking_marker)
-            self._render_buf+=t
-            self._current_gen_text+=t
-            self.root.after(0,self._flush_render_buf)
+                self._has_cleared_placeholder = True
+                self.root.after(0, self._remove_thinking_marker)
+            self._current_gen_text += t
+            self.root.after(0, lambda: renderer.feed(t))
 
-        def _done(err):
-            self.root.after(0,self._flush_remaining_buf)
-            self.root.after(0,lambda: self._set_streaming(False))
+        def _thinking(th):
+            self.root.after(0, lambda: self._insert_thinking_token(th))
+
+        def _done(err, done_reason=None):
+            self.root.after(0, renderer.finish)
+            self.root.after(0, lambda: self._set_streaming(False))
+            self._last_done_reason = done_reason
+
             if err:
-                self.root.after(0,lambda: self._chat_add("error",f"\n[ Error: {err} ]\n\n"))
+                self.root.after(0, lambda: self._chat_add("error", f"\n[ Error: {err} ]\n\n"))
             else:
-                self.root.after(0,lambda: self._chat_add("system","\n\n"))
+                self.root.after(0, lambda: self._chat_add("system", "\n\n"))
+                if is_continuation:
+                    self._last_completed_text += self._current_gen_text
+                else:
+                    self._last_completed_text = self._current_gen_text
+
                 if not is_full and question and self._current_gen_text:
-                    self.conv_manager.record_turn(question, self._current_gen_text, domain)
+                    self.conv_manager.record_turn(question, self._current_gen_text, active_domain)
+
+                # Check if output cut off due to token length
+                if done_reason == "length":
+                    self.root.after(0, self._show_continuation_banner)
 
         OllamaEngine.generate_stream(
-            model=model,system_prompt=sys_p,user_prompt=user_p,
-            token_cb=_token,done_cb=_done,cancel_event=self._cancel_event)
+            model=model,
+            system_prompt=sys_p,
+            user_prompt=user_p,
+            token_cb=_token,
+            thinking_cb=_thinking,
+            done_cb=_done,
+            cancel_event=self._cancel_event,
+            num_predict=pred_limit,
+        )
 
     def _remove_thinking_marker(self):
         try:
             self.chat.configure(state="normal")
-            content=self.chat.get("1.0","end")
-            idx=content.rfind("[ Generating... ]\n")
-            if idx>=0:
-                self.chat.delete(f"1.0+{idx}c",f"1.0+{idx+len('[ Generating... ]')+1}c")
+            content = self.chat.get("1.0", "end")
+            marker = "[ Consulting Classical Shastras & Generating Dual-Layer Reading... ]\n"
+            idx = content.rfind(marker)
+            if idx >= 0:
+                self.chat.delete(f"1.0+{idx}c", f"1.0+{idx+len(marker)}c")
             self.chat.configure(state="disabled")
-        except Exception: pass
+        except Exception:
+            pass
 
     def _auto_analyse(self):
-        if self._streaming: self._chat_add("system","Stop generation first.\n\n"); return
-        self._chat_add("header","=== COMPREHENSIVE JYOTISH READING ===\n")
-        threading.Thread(target=self._run_generation,args=(True,),daemon=True).start()
+        if self._streaming:
+            self._chat_add("system", "Stop current generation first.\n\n")
+            return
+        self._chat_add("header", "\n=== COMPREHENSIVE DUAL-LAYER JYOTISH READING ===\n")
+        self._last_completed_text = ""
+        threading.Thread(target=self._run_generation, kwargs={"is_full": True}, daemon=True).start()
 
     def _send(self):
-        q=self.chat_in.get("1.0","end-1c").strip()
-        if not q: return
-        if self._streaming: self._chat_add("system","Stop generation first.\n\n"); return
-        self.chat_in.delete("1.0","end")
-        self._chat_add("question",f"You: {q}\n")
-        threading.Thread(target=self._run_generation,args=(False,q),daemon=True).start()
+        q = self.chat_in.get("1.0", "end-1c").strip()
+        if not q:
+            return
+        if self._streaming:
+            self._chat_add("system", "Stop current generation first.\n\n")
+            return
+        self.chat_in.delete("1.0", "end")
+        self._chat_add("question", f"You: {q}\n")
+        self._last_completed_text = ""
+        threading.Thread(target=self._run_generation, kwargs={"is_full": False, "question": q}, daemon=True).start()
 
     # ══════════════════════════════════════════════════════════════════════
     #  SAVE / LOAD
