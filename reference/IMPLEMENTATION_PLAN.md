@@ -53,104 +53,22 @@ Client Deliverables
 
 ## 3. Phase 1 — Astrometry & Mathematical Integrity
 
-**Objective:** Complete all missing classical Jyotish mathematical components so downstream AI features and interpretations operate on authentic, uncompromised ground truth.
+**Status: COMPLETED ✅ (Core Mathematical Engine)**  
+All foundational classical Jyotish calculations have been implemented, mathematically verified, and tested against *Brihat Parashara Hora Shastra* standards. Detailed specifications, API references, and test results are documented in [`reference/CHANGELOG.md`](CHANGELOG.md).
 
-**Status: COMPLETED (Core Mathematical Engine) — Tasks 1.1–1.6, plus Panchanga & Gemstone Engines implemented and verified.**
+| Task | Component | Description | Files | Status |
+|:---:|:---|:---|:---|:---:|
+| 1.1 | **6-Fold Shadbala** | Drik (special aspect angles), Ayana (equatorial declination), Sthana (Uchcha, Ojhayugmarashi, Drekkana, Kendradi) | `core/vedic_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 1.2 | **Lunar True Nodes** | `swe.TRUE_NODE` toggle + independent Ketu velocity vector computation | `core/astro_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 1.3 | **Stationary Motion** | 4-state motion classification (`D`, `R`, `SD`, `SR`) at $0.001^\circ/\text{day}$ threshold | `core/astro_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 1.4 | **Polar Latitudes** | Equal house geometric fallback at $|\text{lat}| \ge 60^\circ$ avoiding quadrant collapse | `core/astro_engine.py` | **Completed** ✅ |
+| 1.5 | **Deep Vimshottari** | Hierarchical Pratyantardasha (L3) & Sookshmadasha (L4) with 0-drift tropical year math | `core/vedic_engine.py` | **Completed** ✅ |
+| 1.6 | **Varga Boundaries** | $0.05^\circ$ ($3'$) boundary proximity diagnostic for divisional charts D-1 through D-60 | `core/vedic_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 1.7 | **Panchanga Engine** | 5 classical limbs: Tithi (30), Vara (7), Nakshatra (27), Nitya Yoga (27), Karana (60) | `core/vedic_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 1.8 | **Gemstone Safety** | BPHS functional benefic/malefic filter + primary/substitute specs & safe remedies | `core/vedic_engine.py`, `core/constants.py` | **Completed** ✅ |
+| 2.2*| **Timezone & DST** | Backend standard library `zoneinfo` historical DST resolver integrated into `compute_chart` | `core/astro_engine.py` | **Core Done** ✅ |
 
----
-
-### Task 1.1: Complete 6-Fold Shadbala Engine ✅
-
-**Files:** `vedic_engine.py:443`, `constants.py`, `app.py:883`  
-**Scorecard Rating:** 5/10 → Target 9/10 (Core Complete)
-
-**Implemented:**
-- **Drik Bala:** Mutual aspect angles between all 7 grahas. Classical special aspect rules (Mars: 4th, 7th, 8th; Jupiter: 5th, 7th, 9th; Saturn: 3rd, 7th, 10th; all others: 7th only). Net virupa calculated from benefics minus malefics.
-- **Ayana Bala:** Swiss Ephemeris `FLG_EQUATORIAL | FLG_SIDEREAL` for planetary declination δ. Score based on obliquity of the ecliptic (ε ≈ 23.44°). Natural benefics receive maximum strength with northern declination, malefics with southern declination.
-- **Ojhayugmarashi Bala:** Odd/even sign placement rules per BPHS.
-- **Drekkana Bala:** Decanate lordship dignity checks.
-- **Kendradi Bala:** Cusp-based quadrant placement.
-- **Full Sthana Bala:** Complete aggregate of Uchcha, Ojhayugmarashi, Drekkana, and Kendradi.
-- Total Shadbala score now incorporates all 6 classical components; removed misleading partial totals.
-
----
-
-### Task 1.2: Lunar True Nodes & Independent Ketu Vector ✅
-
-**Files:** `astro_engine.py:134`, `constants.py`, `app.py`  
-**Scorecard Rating:** Bug → Fixed (Core Complete)
-
-**Implemented:**
-- Added `NODE_TYPE_MEAN` and `NODE_TYPE_TRUE` configuration in `constants.py`.
-- When `"True"` is active, uses `swe.TRUE_NODE` for Rahu and computes Ketu's velocity independently via opposite node ephemeris position (`xx_k[3]`), rather than cloning Rahu's speed vector.
-- Graceful backward compatibility with `"Mean"` mode.
-
----
-
-### Task 1.3: Stationary Planetary Motion Detection ✅
-
-**Files:** `astro_engine.py:150`  
-**Scorecard Rating:** 9/10 → Target 10/10 (Core Complete)
-
-**Implemented:**
-- Added stationary threshold constant: `STATIONARY_SPD_DEG = 0.001` (degrees/day) in `constants.py`.
-- Classifies planetary motion into four discrete classical states: `"D"` (Direct), `"R"` (Retrograde), `"SD"` (Stationary Direct), `"SR"` (Stationary Retrograde).
-- Stored as `"motion_state"` in each planet's dictionary.
-
----
-
-### Task 1.4: High-Latitude Polar Quadrant Protection ✅
-
-**Files:** `astro_engine.py:175`, `app.py`  
-**Scorecard Rating:** 9/10 → Target 10/10 (Core Complete)
-
-**Implemented:**
-- Added `POLAR_LATITUDE_THRESHOLD = 60.0` degrees in `constants.py`.
-- At polar latitudes (`abs(lat) > 60.0`), falls back to geometric Equal House cusps (30° increments from Ascendant) to prevent tangent math domain errors.
-- Annotates `_meta` with `"bhava_method": "equal_house_polar_fallback"`.
-
----
-
-### Task 1.5: Pratyantardasha (Level 3) & Sookshmadasha (Level 4) ✅
-
-**Files:** `vedic_engine.py:330`, `app.py:840`  
-**Scorecard Rating:** 5/10 → Target 8/10 (Core Complete)
-
-**Implemented:**
-- Expanded `vimshottari(chandra_lon, jd, year_days=365.24219, depth=2, current_only_sub=False)` with configurable nesting depth (1 through 4).
-- Added `compute_pratyantardasha_for_ad(ad_dict, year_days=365.24219, include_sookshma=False)` for on-demand Level 3 and Level 4 expansion when user double-clicks an Antardasha row in the UI.
-- Rigorously validates classical dasha proportions ($Y_{sub} = Y_{parent} \times \text{DASHA\_VARSH}[lord] / 120.0$) and ensures continuous start/end datetime intervals with zero rounding drift.
-
----
-
-### Task 1.6: Divisional Chart Boundary Proximity Warnings ✅
-
-**Files:** `vedic_engine.py`, `app.py`  
-**Scorecard Rating:** Devil's Advocate 3.3 (Core Complete)
-
-**Implemented:**
-- Added `BOUNDARY_THRESHOLD = 0.05` degrees in `constants.py`.
-- Enhanced `varga(lon, n, return_boundary=False)` to optionally return `(rashi, is_near_boundary, deg_in_varga)`.
-- Added `check_varga_boundary(lon, n, threshold=BOUNDARY_THRESHOLD)` to test if a natal longitude sits within ±0.05° of a division boundary.
-- Added `compute_varga_chart(grahas, n, threshold=BOUNDARY_THRESHOLD)` returning complete divisional chart placements with `"boundary_flag"`, `"boundary_dist"`, `"varga_rashi"`, `"varga_ansh"`, `"varga_longitude"`, and `"bhava"` relative to divisional Lagna.
-
----
-
-### Additional Mathematical Modules Implemented:
-
-#### Task 1.7: Classical Panchanga Engine (5 Limbs of Time) ✅
-**Files:** `vedic_engine.py`, `constants.py`  
-- Computes **Tithi** (1–30, Shukla/Krishna paksha, elapsed percentage).
-- Computes **Vara** (Sanskrit weekday & ruling graha).
-- Computes **Nakshatra** (1–27, pada 1–4, ruler, elapsed percentage).
-- Computes **Nitya Yoga** (27 solilunar yogas, auspicious/inauspicious classification, ruler).
-- Computes **Karana** (60 half-tithis mapped to 4 fixed and 7 repeating karanas, identifying Vishti/Bhadra).
-
-#### Task 1.8: Gemstone Prescription Specifications & Safety Filter ✅
-**Files:** `vedic_engine.py`, `constants.py`  
-- Comprehensive gemstone specifications: primary gem, Sanskrit name, uparatna substitutes, metal, finger, day/hora, consecration mantra.
-- Body-weight-based carat and ratti calculation formula.
-- Strict safety filter: automatically contraindicates gemstones for functional malefics of the native's Lagna, prescribing safe alternative remedies (mantra japa, charity, puja).
+*(Note: UI presentation of Level 3/4 Dasha, Panchanga tab, Gemstone tab, and DST badge will be wired in Phase 4).*
 
 ---
 

@@ -177,6 +177,94 @@ class TestCoreEngines(unittest.TestCase):
         self.assertIn("CONTRAINDICATED", g_shani["warning"])
         self.assertIn("safe_remedy", g_shani)
 
+    def test_rashi_chart_styles_and_toggle(self):
+        """Verify RashiChart supports interchangeable North and South Indian styles."""
+        from unittest.mock import MagicMock
+        from ui.ui_widgets import RashiChart
+
+        chart = RashiChart.__new__(RashiChart)
+        chart.chart_style = "North Indian"
+        chart.grahas = self.grahas
+        chart.t_grahas = {}
+        chart.size = 330
+        chart.title = "Test Birth Chart"
+        chart.delete = MagicMock()
+        chart.create_text = MagicMock()
+        chart.create_polygon = MagicMock()
+        chart.create_rectangle = MagicMock()
+        chart.create_line = MagicMock()
+        chart.winfo_width = MagicMock(return_value=330)
+        chart.winfo_height = MagicMock(return_value=364)
+        chart.tag_bind = MagicMock()
+        chart.config = MagicMock()
+
+        # 1. Render North Indian (Diamond / Rhombus)
+        chart._draw_north_indian()
+        self.assertEqual(chart.create_polygon.call_count, 12, "North Indian chart must draw 12 house polygons")
+        self.assertGreaterEqual(chart.create_line.call_count, 3, "North Indian chart must draw diamond & diagonals")
+
+        # 2. Toggle to South Indian (Square Box)
+        chart.toggle_style()
+        self.assertEqual(chart.chart_style, "South Indian")
+        chart._draw_south_indian()
+        self.assertGreaterEqual(chart.create_rectangle.call_count, 12, "South Indian chart must draw 12 sign boxes")
+
+        # 3. Explicit style setter
+        chart.set_style("North Indian")
+        self.assertEqual(chart.chart_style, "North Indian")
+
+        # 4. Chart font scaling (for large letter readability)
+        chart.set_font_scale(1.5)
+        self.assertEqual(chart.font_scale, 1.5)
+        chart.zoom_in_font()
+        self.assertAlmostEqual(chart.font_scale, 1.65, places=2)
+        chart.zoom_out_font()
+        self.assertAlmostEqual(chart.font_scale, 1.5, places=2)
+        chart.zoom_reset_font()
+        self.assertEqual(chart.font_scale, 1.0)
+
+    def test_app_menu_and_zoom_methods(self):
+        """Verify JyotishApp defines all menu callbacks and zoom helper methods."""
+        from unittest.mock import MagicMock
+        from ui.app import JyotishApp
+        for method_name in [
+            "_purge_ai_cache",
+            "_show_about_dialog",
+            "_calculate",
+            "_save_kundali",
+            "_load_kundali",
+            "_export_report",
+            "_refresh_transits",
+            "_auto_analyse",
+            "_clear_chat",
+            "_apply_ui_scale",
+            "_zoom_in_ui",
+            "_zoom_out_ui",
+            "_zoom_reset_ui",
+            "_apply_chart_font_scale",
+            "_zoom_in_chart",
+            "_zoom_out_chart",
+            "_zoom_reset_chart",
+            "_zoom_in_all",
+            "_zoom_out_all",
+            "_zoom_reset_all",
+            "_zoom_in",
+            "_zoom_out",
+            "_zoom_reset",
+            "_on_chart_style_changed",
+        ]:
+            self.assertTrue(
+                hasattr(JyotishApp, method_name) and callable(getattr(JyotishApp, method_name)),
+                f"JyotishApp must define callable method {method_name}",
+            )
+
+        # Verify _build_menu_bar executes cleanly without AttributeError
+        app = JyotishApp.__new__(JyotishApp)
+        app.root = MagicMock()
+        app.chart_style_var = MagicMock()
+        app._build_menu_bar()
+        self.assertTrue(app.root.config.called)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -123,6 +123,13 @@ class JyotishApp:
         self.varga_desc_var = tk.StringVar(value="Select a Varga and click Show.")
         self.dasha_year_var = tk.StringVar(value=DASHA_YEAR_NAMES[0])
         self.ashtak_var     = tk.StringVar(value="Sarva (All)")
+        self.chart_style_var= tk.StringVar(value="North Indian")
+
+        # ── Global UI & Chart Font Scaling State ───────────────────────────
+        self.current_ui_scale         = 1.0
+        self.current_chart_scale      = 1.0
+        self.ui_scale_var             = tk.StringVar(value="100%")
+        self.chart_font_scale_var     = tk.StringVar(value="100%")
 
         # ── Streaming state ────────────────────────────────────────────────
         self._cancel_event            = threading.Event()
@@ -142,7 +149,7 @@ class JyotishApp:
         self.read_view_mode_var       = tk.StringVar(value="Dual View (Full)")
         self.show_thinking_var        = tk.BooleanVar(value=False)
 
-        xp_style(root)
+        xp_style(root, scale=self.current_ui_scale)
         self._build()
         self._bind_shortcuts()
         threading.Thread(target=self._check_ollama_bg, daemon=True).start()
@@ -158,15 +165,95 @@ class JyotishApp:
         self.root.bind("<Control-l>", lambda e: self._load_kundali())
         self.root.bind("<Control-L>", lambda e: self._load_kundali())
         self.root.bind("<F5>",        lambda e: self._refresh_transits())
-        self.root.bind("<Control-plus>",  lambda e: self._zoom_in())
-        self.root.bind("<Control-equal>", lambda e: self._zoom_in())
-        self.root.bind("<Control-minus>", lambda e: self._zoom_out())
-        self.root.bind("<Control-0>",     lambda e: self._zoom_reset())
+        self.root.bind("<Control-plus>",  lambda e: self._zoom_in_all())
+        self.root.bind("<Control-equal>", lambda e: self._zoom_in_all())
+        self.root.bind("<Control-minus>", lambda e: self._zoom_out_all())
+        self.root.bind("<Control-0>",     lambda e: self._zoom_reset_all())
 
     # ══════════════════════════════════════════════════════════════════════
     #  BUILD LAYOUT
     # ══════════════════════════════════════════════════════════════════════
+    def _build_menu_bar(self):
+        mb = tk.Menu(self.root, tearoff=0)
+        self.root.config(menu=mb)
+
+        # ── FILE MENU ──
+        file_menu = tk.Menu(mb, tearoff=0)
+        mb.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Calculate Chart (Ctrl+G)", command=self._calculate)
+        file_menu.add_command(label="Save Kundali (Ctrl+S)", command=self._save_kundali)
+        file_menu.add_command(label="Load Kundali (Ctrl+L)", command=self._load_kundali)
+        file_menu.add_command(label="Export Full Dossier...", command=self._export_report)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.root.quit)
+
+        # ── VIEW & FONT MENU ──
+        view_menu = tk.Menu(mb, tearoff=0)
+        mb.add_cascade(label="View & Font", menu=view_menu)
+
+        # UI Font Scale
+        ui_sub = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="🖥 Application UI Font Scale", menu=ui_sub)
+        for pct_label, val in [("85% (Compact)", 0.85), ("100% (Normal)", 1.0),
+                               ("115% (Medium)", 1.15), ("130% (Large)", 1.3),
+                               ("150% (Extra Large)", 1.5), ("175% (Maximum)", 1.75)]:
+            ui_sub.add_command(label=pct_label, command=lambda v=val: self._apply_ui_scale(v))
+        ui_sub.add_separator()
+        ui_sub.add_command(label="Increase UI Font", command=self._zoom_in_ui)
+        ui_sub.add_command(label="Decrease UI Font", command=self._zoom_out_ui)
+        ui_sub.add_command(label="Reset UI Scale", command=self._zoom_reset_ui)
+
+        # Chart Letters Size
+        chart_sub = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="🔤 Chart Letters Size (Kundali Text)", menu=chart_sub)
+        for pct_label, val in [("85% (Small)", 0.85), ("100% (Standard)", 1.0),
+                               ("125% (Large)", 1.25), ("150% (Extra Large)", 1.5),
+                               ("175% (Maximum)", 1.75), ("200% (Huge)", 2.0)]:
+            chart_sub.add_command(label=pct_label, command=lambda v=val: self._apply_chart_font_scale(v))
+        chart_sub.add_separator()
+        chart_sub.add_command(label="Enlarge Chart Letters", command=self._zoom_in_chart)
+        chart_sub.add_command(label="Shrink Chart Letters", command=self._zoom_out_chart)
+        chart_sub.add_command(label="Reset Chart Letters", command=self._zoom_reset_chart)
+
+        view_menu.add_separator()
+
+        # Chart Diagram Style
+        chart_style_sub = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="📐 Chart Diagram Style", menu=chart_style_sub)
+        chart_style_sub.add_radiobutton(label="❖ North Indian (Diamond / Rhombus)",
+                                         variable=self.chart_style_var, value="North Indian",
+                                         command=self._on_chart_style_changed)
+        chart_style_sub.add_radiobutton(label="⊞ South Indian (Square Box)",
+                                         variable=self.chart_style_var, value="South Indian",
+                                         command=self._on_chart_style_changed)
+
+        view_menu.add_separator()
+
+        # Global Zoom shortcuts
+        zoom_all_sub = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="🔍 Global Zoom (UI + Charts + Text)", menu=zoom_all_sub)
+        zoom_all_sub.add_command(label="Zoom In All (Ctrl + =)", command=self._zoom_in_all)
+        zoom_all_sub.add_command(label="Zoom Out All (Ctrl + -)", command=self._zoom_out_all)
+        zoom_all_sub.add_command(label="Reset All (Ctrl + 0)", command=self._zoom_reset_all)
+
+        # ── TOOLS MENU ──
+        tools_menu = tk.Menu(mb, tearoff=0)
+        mb.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Calculate Chart (Ctrl+G)", command=self._calculate)
+        tools_menu.add_command(label="Refresh Transits (F5)", command=self._refresh_transits)
+        tools_menu.add_command(label="⚡ Full Life Reading", command=self._auto_analyse)
+        tools_menu.add_command(label="Clear AI Chat", command=self._clear_chat)
+        tools_menu.add_command(label="Clear AI Memory Cache", command=self._purge_ai_cache)
+
+        # ── HELP MENU ──
+        help_menu = tk.Menu(mb, tearoff=0)
+        mb.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About Vedic Astrology Calculator", command=self._show_about_dialog)
+
     def _build(self):
+        # ── Native Application Menu Bar ────────────────────────────────────
+        self._build_menu_bar()
+
         # ── Gradient header ────────────────────────────────────────────────
         self.header = XPGradientHeader(
             self.root,
@@ -331,6 +418,50 @@ class JyotishApp:
     def _tab_rashi(self):
         f = tk.Frame(self.nb, bg=XP_BG)
         self.nb.add(f, text="Birth Chart")
+
+        # Top Control Strip: Chart Style & Font Scaling
+        cs_strip = tk.Frame(f, bg=XP_SURFACE, relief="flat", bd=1)
+        cs_strip.pack(fill="x", padx=6, pady=(4, 2))
+
+        # Chart Style
+        tk.Label(cs_strip, text="Style:", bg=XP_SURFACE, fg=XP_TEXT_D,
+                 font=("Tahoma", 9, "bold")).pack(side="left", padx=(8, 2), pady=4)
+
+        for style_name in ("North Indian", "South Indian"):
+            rb = ttk.Radiobutton(cs_strip, text=f" {style_name} ", value=style_name,
+                                 variable=self.chart_style_var, command=self._on_chart_style_changed,
+                                 style="XP.TRadiobutton")
+            rb.pack(side="left", padx=4, pady=4)
+
+        ttk.Button(cs_strip, text="⇄ Swap", style="XP.TButton",
+                   command=self._swap_all_chart_styles).pack(side="left", padx=(4, 10), pady=3)
+
+        # Chart Letters Zoom (Kundali text size)
+        tk.Label(cs_strip, text="🔤 Chart Font:", bg=XP_SURFACE, fg=XP_TEXT_D,
+                 font=("Tahoma", 9, "bold")).pack(side="left", padx=(6, 2), pady=4)
+        ttk.Button(cs_strip, text="A-", width=3, style="XP.TButton",
+                   command=self._zoom_out_chart).pack(side="left", padx=1, pady=3)
+        self.chart_font_combo = ttk.Combobox(cs_strip, textvariable=self.chart_font_scale_var,
+                                             values=["85%", "100%", "125%", "150%", "175%", "200%"],
+                                             width=5, state="readonly", style="XP.TCombobox")
+        self.chart_font_combo.pack(side="left", padx=2, pady=3)
+        self.chart_font_combo.bind("<<ComboboxSelected>>", self._on_chart_font_combo_selected)
+        ttk.Button(cs_strip, text="A+", width=3, style="XP.TButton",
+                   command=self._zoom_in_chart).pack(side="left", padx=1, pady=3)
+
+        # UI Font Zoom
+        tk.Label(cs_strip, text="🖥 UI Font:", bg=XP_SURFACE, fg=XP_TEXT_D,
+                 font=("Tahoma", 9, "bold")).pack(side="left", padx=(10, 2), pady=4)
+        ttk.Button(cs_strip, text="A-", width=3, style="XP.TButton",
+                   command=self._zoom_out_ui).pack(side="left", padx=1, pady=3)
+        self.ui_scale_combo = ttk.Combobox(cs_strip, textvariable=self.ui_scale_var,
+                                           values=["85%", "100%", "115%", "130%", "150%", "175%"],
+                                           width=5, state="readonly", style="XP.TCombobox")
+        self.ui_scale_combo.pack(side="left", padx=2, pady=3)
+        self.ui_scale_combo.bind("<<ComboboxSelected>>", self._on_ui_scale_combo_selected)
+        ttk.Button(cs_strip, text="A+", width=3, style="XP.TButton",
+                   command=self._zoom_in_ui).pack(side="left", padx=1, pady=3)
+
         top = tk.Frame(f, bg=XP_BG)
         top.pack(fill="both", expand=True, padx=4, pady=4)
         top.grid_columnconfigure(0, weight=1)
@@ -339,12 +470,12 @@ class JyotishApp:
 
         d1o, d1i = titled_frame(top, "Rashi (D-1) — Birth Chart")
         d1o.grid(row=0, column=0, sticky="nsew", padx=3, pady=3)
-        self.rasi_chart = RashiChart(d1i, title="Birth Chart (D-1)", size=330)
+        self.rasi_chart = RashiChart(d1i, title="Birth Chart (D-1)", size=330, chart_style=self.chart_style_var.get(), font_scale=self.current_chart_scale)
         self.rasi_chart.pack(fill="both", expand=True, padx=2, pady=2)
 
         d9o, d9i = titled_frame(top, "Navamsa (D-9) — Marriage & Soul")
         d9o.grid(row=0, column=1, sticky="nsew", padx=3, pady=3)
-        self.navamsa_chart = RashiChart(d9i, title="Navamsa (D-9)", size=330)
+        self.navamsa_chart = RashiChart(d9i, title="Navamsa (D-9)", size=330, chart_style=self.chart_style_var.get(), font_scale=self.current_chart_scale)
         self.navamsa_chart.pack(fill="both", expand=True, padx=2, pady=2)
 
         ib = tk.Frame(f, bg=XP_SURFACE, relief="solid", bd=1)
@@ -380,6 +511,10 @@ class JyotishApp:
         ttk.Combobox(tb,textvariable=self.varga_var,values=VARGA_LIST,
                      width=24,style="XP.TCombobox",state="readonly").pack(side="left",padx=5)
         ttk.Button(tb,text="Show",style="XP.TButton",command=self._show_varga).pack(side="left",padx=3)
+        ttk.Button(tb,text="⇄ Chart Style",style="XP.TButton",command=self._swap_all_chart_styles).pack(side="right",padx=6)
+        ttk.Button(tb,text="A+",width=3,style="XP.TButton",command=self._zoom_in_chart).pack(side="right",padx=1)
+        ttk.Button(tb,text="A-",width=3,style="XP.TButton",command=self._zoom_out_chart).pack(side="right",padx=1)
+        tk.Label(tb,text="Chart Font:",bg=XP_BG,fg=XP_TEXT_M,font=("Tahoma",8,"bold")).pack(side="right",padx=(6,2))
         ma = tk.Frame(f,bg=XP_BG); ma.pack(fill="both",expand=True,padx=4,pady=4)
         ma.grid_columnconfigure(0,weight=1)
         ma.grid_columnconfigure(1,weight=1)
@@ -647,6 +782,11 @@ class JyotishApp:
                          command=self._refresh_transits)
         ref.pack(side="left",padx=3)
         XPTooltip(ref,"F5 — fetch current planetary positions")
+        ttk.Button(tb, text="⇄ Chart Style", style="XP.TButton",
+                   command=self._swap_all_chart_styles).pack(side="right", padx=6)
+        ttk.Button(tb, text="A+", width=3, style="XP.TButton", command=self._zoom_in_chart).pack(side="right", padx=1)
+        ttk.Button(tb, text="A-", width=3, style="XP.TButton", command=self._zoom_out_chart).pack(side="right", padx=1)
+        tk.Label(tb, text="Chart Font:", bg=XP_BG, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="right", padx=(6, 2))
 
         # Layout: chart + table (paned, draggable)
         pn = tk.PanedWindow(f,orient="horizontal",bg=XP_BORDER,sashrelief="flat",sashwidth=3,bd=0)
@@ -705,12 +845,12 @@ class JyotishApp:
         self.font_combo.pack(side="left", padx=2, pady=3)
         self.font_combo.bind("<<ComboboxSelected>>", self._on_reading_typography_changed)
 
-        ttk.Button(read_tb, text="A-", width=3, style="XP.TButton", command=self._zoom_out).pack(side="left", padx=(4, 1), pady=3)
+        ttk.Button(read_tb, text="A-", width=3, style="XP.TButton", command=self._zoom_out_reading).pack(side="left", padx=(4, 1), pady=3)
         self.size_combo = ttk.Combobox(read_tb, textvariable=self.read_font_size_var,
                                         values=READING_SIZES, width=3, state="readonly", style="XP.TCombobox")
         self.size_combo.pack(side="left", padx=1, pady=3)
         self.size_combo.bind("<<ComboboxSelected>>", self._on_reading_typography_changed)
-        ttk.Button(read_tb, text="A+", width=3, style="XP.TButton", command=self._zoom_in).pack(side="left", padx=(1, 6), pady=3)
+        ttk.Button(read_tb, text="A+", width=3, style="XP.TButton", command=self._zoom_in_reading).pack(side="left", padx=(1, 6), pady=3)
 
         # Theme Selector
         tk.Label(read_tb, text="🎨 Theme:", bg=XP_SURFACE, fg=XP_TEXT_M, font=("Tahoma", 8, "bold")).pack(side="left", padx=(4, 2), pady=3)
@@ -781,10 +921,10 @@ class JyotishApp:
         chat_sb.pack(side="right", fill="y")
 
         # Shortcuts on chat widget for zoom
-        self.chat.bind("<Control-plus>", lambda e: self._zoom_in())
-        self.chat.bind("<Control-equal>", lambda e: self._zoom_in())
-        self.chat.bind("<Control-minus>", lambda e: self._zoom_out())
-        self.chat.bind("<Control-0>", lambda e: self._zoom_reset())
+        self.chat.bind("<Control-plus>", lambda e: self._zoom_in_all())
+        self.chat.bind("<Control-equal>", lambda e: self._zoom_in_all())
+        self.chat.bind("<Control-minus>", lambda e: self._zoom_out_all())
+        self.chat.bind("<Control-0>", lambda e: self._zoom_reset_all())
 
         self._configure_chat_tags()
 
@@ -993,21 +1133,110 @@ class JyotishApp:
         show = self.show_thinking_var.get()
         self.chat.tag_configure("thinking", elide=not show)
 
-    def _zoom_in(self):
+    def _zoom_in_reading(self):
         sz = self.read_font_size_var.get()
         if sz < 24:
             self.read_font_size_var.set(sz + 1)
             self._apply_reading_font_and_theme()
 
-    def _zoom_out(self):
+    def _zoom_out_reading(self):
         sz = self.read_font_size_var.get()
         if sz > 8:
             self.read_font_size_var.set(sz - 1)
             self._apply_reading_font_and_theme()
 
-    def _zoom_reset(self):
+    def _zoom_reset_reading(self):
         self.read_font_size_var.set(READING_DEFAULT_SIZE)
         self._apply_reading_font_and_theme()
+
+    # ── UI & Chart Font Zoom Handlers ─────────────────────────────────────
+    def _apply_ui_scale(self, scale):
+        self.current_ui_scale = max(0.7, min(scale, 2.2))
+        pct = int(round(self.current_ui_scale * 100))
+        self.ui_scale_var.set(f"{pct}%")
+        xp_style(self.root, scale=self.current_ui_scale)
+
+    def _zoom_in_ui(self):
+        self._apply_ui_scale(self.current_ui_scale + 0.15)
+
+    def _zoom_out_ui(self):
+        self._apply_ui_scale(self.current_ui_scale - 0.15)
+
+    def _zoom_reset_ui(self):
+        self._apply_ui_scale(1.0)
+
+    def _on_ui_scale_combo_selected(self, event=None):
+        val_str = self.ui_scale_var.get().replace("%", "").strip()
+        try:
+            val = float(val_str) / 100.0
+            self._apply_ui_scale(val)
+        except Exception:
+            pass
+
+    def _apply_chart_font_scale(self, scale):
+        self.current_chart_scale = max(0.6, min(scale, 2.5))
+        pct = int(round(self.current_chart_scale * 100))
+        self.chart_font_scale_var.set(f"{pct}%")
+        if hasattr(self, "rasi_chart"):
+            self.rasi_chart.set_font_scale(self.current_chart_scale)
+        if hasattr(self, "navamsa_chart"):
+            self.navamsa_chart.set_font_scale(self.current_chart_scale)
+        if hasattr(self, "varga_chart"):
+            self.varga_chart.set_font_scale(self.current_chart_scale)
+        if hasattr(self, "transit_chart"):
+            self.transit_chart.set_font_scale(self.current_chart_scale)
+
+    def _zoom_in_chart(self):
+        self._apply_chart_font_scale(self.current_chart_scale + 0.15)
+
+    def _zoom_out_chart(self):
+        self._apply_chart_font_scale(self.current_chart_scale - 0.15)
+
+    def _zoom_reset_chart(self):
+        self._apply_chart_font_scale(1.0)
+
+    def _on_chart_font_combo_selected(self, event=None):
+        val_str = self.chart_font_scale_var.get().replace("%", "").strip()
+        try:
+            val = float(val_str) / 100.0
+            self._apply_chart_font_scale(val)
+        except Exception:
+            pass
+
+    # ── Global Zoom (All simultaneously) ──────────────────────────────────
+    def _zoom_in_all(self):
+        self._zoom_in_ui()
+        self._zoom_in_chart()
+        self._zoom_in_reading()
+
+    def _zoom_out_all(self):
+        self._zoom_out_ui()
+        self._zoom_out_chart()
+        self._zoom_out_reading()
+
+    def _zoom_reset_all(self):
+        self._zoom_reset_ui()
+        self._zoom_reset_chart()
+        self._zoom_reset_reading()
+
+    def _zoom_in(self):
+        self._zoom_in_all()
+
+    def _zoom_out(self):
+        self._zoom_out_all()
+
+    def _zoom_reset(self):
+        self._zoom_reset_all()
+
+    def _show_about_dialog(self):
+        messagebox.showinfo(
+            "About Vedic Astrology Calculator",
+            "Vedic Astrology Calculator v6.0\n"
+            "• Offline Swiss Ephemeris astronomical computation\n"
+            "• Interchangeable North Indian & South Indian Kundali styles\n"
+            "• Dynamic font scaling for entire UI & Chart text\n"
+            "• Dual-Layer Explainable AI & Classical Manuscript RAG"
+        )
 
     def _safe_scroll_to_end(self):
         try:
@@ -1104,6 +1333,20 @@ class JyotishApp:
     def _clear_chat(self):
         self.chat.configure(state="normal"); self.chat.delete("1.0","end")
         self.chat.configure(state="disabled")
+
+    def _purge_ai_cache(self):
+        """Purge Ollama KV memory cache and reset conversational session."""
+        try:
+            model = self.ollama_model_var.get()
+            OllamaEngine.clear_cache(model)
+            if hasattr(self, "conv_manager"):
+                self.conv_manager.turns.clear()
+                self.conv_manager.compressed_findings.clear()
+            self._chat_add("system", "\n[ AI KV memory cache cleared & conversational state reset ]\n\n")
+            if hasattr(self, "sb"):
+                self.sb.set("msg", "AI KV context cache purged")
+        except Exception as e:
+            messagebox.showwarning("Clear Cache", f"Could not clear AI cache: {e}")
 
     def _set_streaming(self,on):
         self._streaming = on
@@ -1262,8 +1505,26 @@ class JyotishApp:
             f"  |  Yogas: {len(self.yogas)}  |  Doshas: {len(self.doshas)}")
         self.sb.set("msg","Chart ready")
 
+    def _on_chart_style_changed(self):
+        style = self.chart_style_var.get()
+        if hasattr(self, "rasi_chart"):
+            self.rasi_chart.set_style(style)
+        if hasattr(self, "navamsa_chart"):
+            self.navamsa_chart.set_style(style)
+        if hasattr(self, "varga_chart"):
+            self.varga_chart.set_style(style)
+        if hasattr(self, "transit_chart"):
+            self.transit_chart.set_style(style)
+
+    def _swap_all_chart_styles(self):
+        cur = self.chart_style_var.get()
+        new_style = "South Indian" if cur == "North Indian" else "North Indian"
+        self.chart_style_var.set(new_style)
+        self._on_chart_style_changed()
+
     def _upd_charts(self):
-        self.rasi_chart.set_data(self.grahas,"Birth Chart (D-1)")
+        style = self.chart_style_var.get()
+        self.rasi_chart.set_data(self.grahas, "Birth Chart (D-1)", chart_style=style)
         nav = {}
         for gn,pd in self.grahas.items():
             if gn.startswith("_"): continue
@@ -1275,7 +1536,7 @@ class JyotishApp:
         for gn,pd in nav.items():
             if gn in ("Lagna","_meta"): continue
             pd["bhava"]=(pd["rashi"]-nav_lr)%12+1
-        self.navamsa_chart.set_data(nav,"Navamsa (D-9)")
+        self.navamsa_chart.set_data(nav, "Navamsa (D-9)", chart_style=style)
 
     def _upd_grahas(self):
         for r in self.g_tree.get_children(): self.g_tree.delete(r)
@@ -1775,7 +2036,7 @@ class JyotishApp:
         for gn,pd in vg.items():
             if gn in ("Lagna","_meta"): continue
             pd["bhava"]=(pd["rashi"]-var)%12+1
-        self.varga_chart.set_data(vg,sel)
+        self.varga_chart.set_data(vg, sel, chart_style=self.chart_style_var.get(), font_scale=self.current_chart_scale)
         for gn in ALL_GRAHAS+["Lagna"]:
             pd1=self.grahas.get(gn,{}); pd2=vg.get(gn,{})
             if not pd1 or not pd2: continue
@@ -1808,7 +2069,10 @@ class JyotishApp:
         self.transit_chart.set_data(
             self.grahas if self.grahas else {},
             "Natal + Transits",
-            transit_grahas=self.transit_grahas)
+            transit_grahas=self.transit_grahas,
+            chart_style=self.chart_style_var.get(),
+            font_scale=self.current_chart_scale,
+        )
 
         # Update table
         for r in self.transit_tree.get_children(): self.transit_tree.delete(r)

@@ -150,24 +150,47 @@ class XPTooltip:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  TTK STYLE  (pixel-perfect XP Luna)
+#  TTK STYLE  (pixel-perfect XP Luna with Dynamic Font Scaling)
 # ══════════════════════════════════════════════════════════════════════════════
-def xp_style(root):
-    """Brutalist minimalist ttk.Style — dark surfaces, white data areas, sharp corners."""
+def xp_style(root, scale=1.0):
+    """Brutalist minimalist ttk.Style with dynamic scaling for accessibility."""
     s = ttk.Style(root)
     try: s.theme_use("clam")
     except: pass
 
+    # Compute scaled font sizes
+    f_base  = max(7, int(round(9 * scale)))
+    f_bold  = max(7, int(round(9 * scale)))
+    f_small = max(6, int(round(8 * scale)))
+
+    btn_pad_x = max(4, int(round(8 * scale)))
+    btn_pad_y = max(2, int(round(4 * scale)))
+    row_h     = max(18, int(round(22 * scale)))
+    tab_pad_x = max(6, int(round(10 * scale)))
+    tab_pad_y = max(2, int(round(4 * scale)))
+
+    # Configure standard Tk named fonts so plain Tkinter widgets also scale
+    try:
+        for name in ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkCaptionFont", "TkMenuFont"):
+            try:
+                f = tkfont.nametofont(name)
+                orig = 9 if "Heading" not in name else 11
+                f.configure(size=int(round(orig * scale)))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     # ── Core frames / labels ──
     s.configure("XP.TFrame",   background=XP_BG)
-    s.configure("XP.TLabel",   background=XP_BG,      font=("Tahoma",9),        foreground=XP_TEXT_D)
-    s.configure("Head.TLabel", background=XP_BG,      font=("Tahoma",9,"bold"), foreground=XP_BLUE2)
-    s.configure("Small.TLabel",background=XP_BG,      font=("Tahoma",8),        foreground=XP_TEXT_M)
-    s.configure("White.TLabel",background=XP_FIELD,   font=("Tahoma",9),        foreground="#000000")
+    s.configure("XP.TLabel",   background=XP_BG,      font=("Tahoma", f_base),        foreground=XP_TEXT_D)
+    s.configure("Head.TLabel", background=XP_BG,      font=("Tahoma", f_bold, "bold"), foreground=XP_BLUE2)
+    s.configure("Small.TLabel",background=XP_BG,      font=("Tahoma", f_small),       foreground=XP_TEXT_M)
+    s.configure("White.TLabel",background=XP_FIELD,   font=("Tahoma", f_base),        foreground="#000000")
 
     # ── Buttons: flat, sharp corners ──
     s.configure("XP.TButton",
-        background=XP_BTN, font=("Tahoma",9), padding=(8,4),
+        background=XP_BTN, font=("Tahoma", f_base), padding=(btn_pad_x, btn_pad_y),
         relief="flat", borderwidth=1, foreground=XP_TEXT_D)
     s.map("XP.TButton",
         background=[("active","#3A3A3A"),("pressed","#1A1A1A")],
@@ -175,24 +198,24 @@ def xp_style(root):
 
     # Primary action button (blue, bold)
     s.configure("Blue.TButton",
-        background=XP_BLUE, font=("Tahoma",9,"bold"),
-        foreground="#FFFFFF", padding=(10,5), relief="flat", borderwidth=0)
+        background=XP_BLUE, font=("Tahoma", f_base, "bold"),
+        foreground="#FFFFFF", padding=(btn_pad_x + 2, btn_pad_y + 1), relief="flat", borderwidth=0)
     s.map("Blue.TButton",
         background=[("active",XP_BLUE2),("pressed","#1D4ED8")])
 
     # Stop/danger button
     s.configure("Red.TButton",
-        background="#991B1B", font=("Tahoma",9,"bold"),
-        foreground="#FFFFFF", padding=(8,4), relief="flat", borderwidth=0)
+        background="#991B1B", font=("Tahoma", f_base, "bold"),
+        foreground="#FFFFFF", padding=(btn_pad_x, btn_pad_y), relief="flat", borderwidth=0)
     s.map("Red.TButton",
         background=[("active","#B91C1C"),("pressed","#7F1D1D")])
 
     # ── Entry / Combobox — white field, black text ──
     s.configure("XP.TEntry",
         fieldbackground=XP_FIELD, foreground="#000000",
-        font=("Tahoma",9), padding=3, relief="flat", borderwidth=1)
+        font=("Tahoma", f_base), padding=3, relief="flat", borderwidth=1)
     s.configure("XP.TCombobox",
-        fieldbackground=XP_FIELD, foreground="#000000", font=("Tahoma",9))
+        fieldbackground=XP_FIELD, foreground="#000000", font=("Tahoma", f_base))
     s.map("XP.TCombobox",
         fieldbackground=[("readonly",XP_BTN)],
         foreground=[("readonly",XP_TEXT_D)])
@@ -200,19 +223,19 @@ def xp_style(root):
     # ── Notebook tabs: dark with blue active indicator ──
     s.configure("XP.TNotebook", background=XP_BG, tabmargins=[0,4,0,0])
     s.configure("XP.TNotebook.Tab",
-        background=XP_BTN, font=("Tahoma",9), padding=[10,4],
+        background=XP_BTN, font=("Tahoma", f_base), padding=[tab_pad_x, tab_pad_y],
         foreground=XP_TEXT_M)
     s.map("XP.TNotebook.Tab",
         background=[("selected",XP_SURFACE),("active",XP_BTN)],
         foreground=[("selected",XP_BLUE2),("active",XP_TEXT_D)],
-        padding=[("selected",[10,5])])
+        padding=[("selected",[tab_pad_x, tab_pad_y + 1])])
 
     # ── Treeview: white rows, dark heading, blue selection ──
     s.configure("XP.Treeview",
-        background=XP_FIELD, font=("Tahoma",9),
-        rowheight=22, fieldbackground=XP_FIELD, foreground="#000000")
+        background=XP_FIELD, font=("Tahoma", f_base),
+        rowheight=row_h, fieldbackground=XP_FIELD, foreground="#000000")
     s.configure("XP.Treeview.Heading",
-        background=XP_SURFACE, font=("Tahoma",9,"bold"),
+        background=XP_SURFACE, font=("Tahoma", f_bold, "bold"),
         relief="flat", foreground=XP_TEXT_D)
     s.map("XP.Treeview",
         background=[("selected",XP_BLUE)],
@@ -257,120 +280,418 @@ def xp_labelframe(parent, title, padx=6, pady=4):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  RASHI CHART CANVAS
+#  RASHI CHART CANVAS (Interchangeable North & South Indian Styles)
 # ══════════════════════════════════════════════════════════════════════════════
 class RashiChart(tk.Canvas):
     """
-    South-Indian static rashi chart.
+    Vedic Astrology Kundali Canvas.
+    Supports interchangeable North Indian (Diamond / Rhombus) and
+    South Indian (Square Box) styles with one click.
 
-    v6 features:
-    * Transit overlay: pass transit_grahas= dict to overlay 'T·' prefixed
-      planets in XP_BLUE2 color, so natal + transit are on the same canvas.
-    * Retrograde in dark-red color (no 'v' suffix).
-    * Stellium guard: >5 planets shows '+N more'.
-    * Retrograde legend at bottom.
+    Features:
+    * North Indian Style: Fixed houses 1-12 (counter-clockwise), Lagna at top diamond,
+      moving Rashis (zodiac numbers 1-12), and natal/transit planetary placements.
+    * South Indian Style: Fixed signs (clockwise), Lagna marked in ascendant sign box.
+    * Interactive Style Switching: Clickable toggle badge on canvas + set_style() API.
+    * Transit Overlay: Blue 'T·' prefixed transit grahas.
+    * Retrograde Highlight: Dark-red color (#CC2200).
+    * Stellium Guard: >4 planets shows '+N more'.
+    * Dynamic Resizing: Crisp vector geometry adapting to window scaling.
     """
 
-    def __init__(self, parent, title="", size=330, **kw):
-        super().__init__(parent, width=size, height=size+34,
+    def __init__(self, parent, title="", size=330, chart_style="North Indian", font_scale=1.0, **kw):
+        super().__init__(parent, width=size, height=size+36,
                          bg="#FFFFFF", highlightthickness=1,
                          highlightbackground=XP_BORDER, **kw)
-        self.size    = size
-        self.title   = title
-        self.grahas  = {}
-        self.t_grahas= {}   # transit planets
-        self.cell    = size // 4
+        self.size        = size
+        self.title       = title
+        self.chart_style = chart_style
+        self.font_scale  = font_scale
+        self.grahas      = {}
+        self.t_grahas    = {}   # transit planets
+        self.cell        = size // 4
         self.bind("<Configure>", self._resize)
         self.draw()
 
     def _resize(self, e):
-        self.size = min(e.width, e.height) - 34
+        self.size = min(e.width, e.height) - 36
         self.cell = max(self.size // 4, 1)
         self.draw()
 
-    def set_data(self, grahas, title=None, transit_grahas=None):
+    def set_font_scale(self, scale):
+        self.font_scale = max(0.6, min(scale, 2.5))
+        self.draw()
+
+    def zoom_in_font(self):
+        self.set_font_scale(self.font_scale + 0.15)
+
+    def zoom_out_font(self):
+        self.set_font_scale(self.font_scale - 0.15)
+
+    def zoom_reset_font(self):
+        self.set_font_scale(1.0)
+
+    def set_style(self, style):
+        if style in ("North Indian", "South Indian") and style != self.chart_style:
+            self.chart_style = style
+            self.draw()
+
+    def toggle_style(self):
+        new_style = "South Indian" if self.chart_style == "North Indian" else "North Indian"
+        self.chart_style = new_style
+        self.draw()
+
+    def set_data(self, grahas, title=None, transit_grahas=None, chart_style=None, font_scale=None):
         self.grahas   = grahas
         self.t_grahas = transit_grahas or {}
         if title: self.title = title
+        if chart_style: self.chart_style = chart_style
+        if font_scale is not None: self.font_scale = font_scale
         self.draw()
 
     def draw(self):
         self.delete("all")
-        c = self.cell; s = self.size; p = 2
+        if self.chart_style == "North Indian":
+            self._draw_north_indian()
+        else:
+            self._draw_south_indian()
 
-        self.create_text(s//2+p, 12, text=self.title,
-                         font=("Tahoma",9,"bold"), fill="#333333")
+    def _draw_north_indian(self):
+        w = max(self.winfo_width(), self.size + 16)
+        h = max(self.winfo_height(), self.size + 36)
+        y_top = 22
+        bottom_pad = 26
+        s = max(min(w - 20, h - y_top - bottom_pad), 120)
 
-        # ── Collect natal planets per sign ──
-        sg_n = {i:[] for i in range(12)}
+        x0 = (w - s) // 2
+        x1 = x0 + s
+        y0 = y_top + 2
+        y1 = y0 + s
+
+        mx = (x0 + x1) // 2
+        my = (y0 + y1) // 2
+
+        fs = getattr(self, "font_scale", 1.0)
+        f_title = max(8, int(round(9 * fs)))
+        f_rashi = max(7, int(round(7.5 * fs)))
+        f_lagna = max(8, int(round(8.5 * fs)))
+        f_planet = max(8, int(round(9.5 * fs)))
+        f_planet_sm = max(7, int(round(8 * fs)))
+        f_tran = max(6, int(round(7 * fs)))
+        f_leg = max(6, int(round(7 * fs)))
+
+        # Header Title
+        self.create_text(w // 2, 11, text=f"{self.title}  ·  North Indian",
+                         font=("Tahoma", f_title, "bold"), fill="#262626")
+
+        # ── Ascendant Rashi ──
         asc_rashi = None
         if self.grahas:
-            al = self.grahas.get("Lagna",{}).get("longitude")
-            if al is not None: asc_rashi = int(al/30)
+            al = self.grahas.get("Lagna", {}).get("longitude")
+            if al is not None:
+                asc_rashi = int(al / 30) % 12
+            elif "rashi" in self.grahas.get("Lagna", {}):
+                asc_rashi = int(self.grahas["Lagna"]["rashi"]) % 12
+        if asc_rashi is None:
+            asc_rashi = 0
+
+        # Key points of North Indian Geometry
+        T = (mx, y0)
+        R = (x1, my)
+        B = (mx, y1)
+        L = (x0, my)
+
+        TL_c = (x0, y0)
+        TR_c = (x1, y0)
+        BR_c = (x1, y1)
+        BL_c = (x0, y1)
+
+        TL_m = ((x0 + mx) // 2, (y0 + my) // 2)
+        TR_m = ((x1 + mx) // 2, (y0 + my) // 2)
+        BR_m = ((x1 + mx) // 2, (y1 + my) // 2)
+        BL_m = ((x0 + mx) // 2, (y1 + my) // 2)
+
+        M = (mx, my)
+
+        # 12 Houses: Polygons, Centroids, and Rashi label positions
+        houses_poly = {
+            1:  [T, TR_m, M, TL_m],
+            2:  [TL_c, T, TL_m],
+            3:  [TL_c, TL_m, L],
+            4:  [L, TL_m, M, BL_m],
+            5:  [L, BL_m, BL_c],
+            6:  [BL_c, BL_m, B],
+            7:  [B, BL_m, M, BR_m],
+            8:  [B, BR_m, BR_c],
+            9:  [BR_c, R, BR_m],
+            10: [R, TR_m, M, BR_m],
+            11: [R, TR_c, TR_m],
+            12: [TR_c, T, TR_m],
+        }
+
+        # Sign label positions (numbers 1-12)
+        rashi_lbl_pos = {
+            1:  (mx, my - 13),
+            2:  ((TL_c[0] + T[0]) // 2, y0 + 10),
+            3:  (x0 + 11, (TL_c[1] + L[1]) // 2),
+            4:  (mx - 14, my),
+            5:  (x0 + 11, (L[1] + BL_c[1]) // 2),
+            6:  ((BL_c[0] + B[0]) // 2, y1 - 10),
+            7:  (mx, my + 13),
+            8:  ((B[0] + BR_c[0]) // 2, y1 - 10),
+            9:  (x1 - 11, (R[1] + BR_c[1]) // 2),
+            10: (mx + 14, my),
+            11: (x1 - 11, (TR_c[1] + R[1]) // 2),
+            12: ((T[0] + TR_c[0]) // 2, y0 + 10),
+        }
+
+        # ── Map natal planets into houses (1-12) ──
+        house_natal = {h: [] for h in range(1, 13)}
         for gn in ALL_GRAHAS + ["Lagna"]:
-            pd = self.grahas.get(gn,{})
-            if not pd: continue
-            lon = pd.get("longitude")
-            if lon is None: continue
-            sg_n[int(lon/30)].append((GRAHA_SYMBOLS.get(gn,gn[:2]), bool(pd.get("retro"))))
+            pd = self.grahas.get(gn, {})
+            if not pd:
+                continue
+            bhava = pd.get("bhava")
+            if bhava is not None and str(bhava).isdigit() and 1 <= int(bhava) <= 12:
+                h = int(bhava)
+            else:
+                lon = pd.get("longitude")
+                if lon is None:
+                    continue
+                sign = int(lon / 30) % 12
+                h = (sign - asc_rashi) % 12 + 1
+            sym = GRAHA_SYMBOLS.get(gn, gn[:2])
+            is_retro = bool(pd.get("retro"))
+            house_natal[h].append((sym, is_retro))
 
-        # ── Collect transit planets per sign ──
-        sg_t = {i:[] for i in range(12)}
+        # ── Map transit planets into houses (1-12) ──
+        house_transit = {h: [] for h in range(1, 13)}
         for gn in ALL_GRAHAS:
-            pd = self.t_grahas.get(gn,{})
-            if not pd: continue
+            pd = self.t_grahas.get(gn, {})
+            if not pd:
+                continue
             lon = pd.get("longitude")
-            if lon is None: continue
-            sg_t[int(lon/30)].append(GRAHA_SYMBOLS.get(gn,gn[:2]))
+            if lon is None:
+                continue
+            t_sign = int(lon / 30) % 12
+            h = (t_sign - asc_rashi) % 12 + 1
+            sym = GRAHA_SYMBOLS.get(gn, gn[:2])
+            house_transit[h].append(sym)
 
-        # ── Draw cells ──
-        for (row,col_),rn in SI_GRID.items():
-            x0=col_*c+p; y0=row*c+24+p; x1=x0+c; y1=y0+c
-            bg = "#FFFCE8" if rn==asc_rashi else "#FFFFFF"
-            self.create_rectangle(x0,y0,x1,y1,fill=bg,outline="#CCCCCC",width=1)
+        # ── Draw 12 House Compartments ──
+        for h, pts in houses_poly.items():
+            flat = [coord for pt in pts for coord in pt]
+            bg = "#FFFCE8" if h == 1 else "#FFFFFF"
+            self.create_polygon(flat, fill=bg, outline="#DDDDDD", width=1)
 
-            fw = "bold" if rn==asc_rashi else "normal"
-            fc = "#000000" if rn==asc_rashi else "#555555"
-            self.create_text((x0+x1)//2, y0+10, text=RASHI_ABBR[rn],
-                             font=(_DEVA_FONT,7,fw), fill=fc)
+        # ── Draw Structural Diamond & Diagonal Lines ──
+        # Outer boundary
+        self.create_rectangle(x0, y0, x1, y1, outline="#262626", width=2)
+        # Inner diamond
+        self.create_line(T[0], T[1], R[0], R[1], B[0], B[1], L[0], L[1], T[0], T[1],
+                         fill="#262626", width=1.5)
+        # Diagonals
+        self.create_line(TL_c[0], TL_c[1], BR_c[0], BR_c[1], fill="#262626", width=1.5)
+        self.create_line(TR_c[0], TR_c[1], BL_c[0], BL_c[1], fill="#262626", width=1.5)
 
-            # Natal planets
-            nat = sg_n.get(rn,[]); visible = nat[:5]
-            for i,(sym,retro) in enumerate(visible):
-                px_=x0+4+(i%3)*(c//3); py_=y0+23+(i//3)*14
-                col_="#CC2200" if retro else "#000000"
-                self.create_text(px_,py_,text=sym,font=(_DEVA_FONT,9),fill=col_,anchor="w")
-            if len(nat)>5:
-                self.create_text(x1-4,y1-5,text=f"+{len(nat)-5}",
-                                 font=("Tahoma",7),fill="#CC2200",anchor="e")
+        # ── Place Labels and Planets ──
+        for h in range(1, 13):
+            pts = houses_poly[h]
+            cx = sum(p[0] for p in pts) // len(pts)
+            cy = sum(p[1] for p in pts) // len(pts)
 
-            # Transit planets (small, blue, bottom of cell)
-            tran = sg_t.get(rn,[])
+            r_idx = (asc_rashi + h - 1) % 12
+            sign_num = r_idx + 1
+
+            # Rashi number (1-12)
+            lx, ly = rashi_lbl_pos[h]
+            self.create_text(lx, ly, text=str(sign_num), font=("Tahoma", f_rashi, "bold"), fill="#71717A")
+
+            # In House 1, mark Ascendant
+            if h == 1:
+                self.create_text(T[0], T[1] + 11, text="लग्न", font=(_DEVA_FONT, f_lagna, "bold"), fill="#B45309")
+
+            # Natal Planets
+            nat = house_natal[h]
+            n_planets = len(nat)
+            if n_planets == 1:
+                sym, retro = nat[0]
+                col = "#CC2200" if retro else "#111111"
+                self.create_text(cx, cy, text=sym, font=(_DEVA_FONT, f_planet, "bold"), fill=col)
+            elif n_planets == 2:
+                col0 = "#CC2200" if nat[0][1] else "#111111"
+                col1 = "#CC2200" if nat[1][1] else "#111111"
+                dx = int(round(14 * min(fs, 1.4)))
+                self.create_text(cx - dx, cy, text=nat[0][0], font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col0)
+                self.create_text(cx + dx, cy, text=nat[1][0], font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col1)
+            elif n_planets == 3:
+                col0 = "#CC2200" if nat[0][1] else "#111111"
+                col1 = "#CC2200" if nat[1][1] else "#111111"
+                col2 = "#CC2200" if nat[2][1] else "#111111"
+                dx = int(round(14 * min(fs, 1.4)))
+                dy = int(round(8 * min(fs, 1.4)))
+                self.create_text(cx, cy - dy, text=nat[0][0], font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col0)
+                self.create_text(cx - dx, cy + dy, text=nat[1][0], font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col1)
+                self.create_text(cx + dx, cy + dy, text=nat[2][0], font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col2)
+            elif n_planets >= 4:
+                vis = nat[:4]
+                dx = int(round(13 * min(fs, 1.4)))
+                dy = int(round(7 * min(fs, 1.4)))
+                dxs = [-dx, dx, -dx, dx]
+                dys = [-dy, -dy, dy, dy]
+                for (sym, retro), p_dx, p_dy in zip(vis, dxs, dys):
+                    col = "#CC2200" if retro else "#111111"
+                    self.create_text(cx + p_dx, cy + p_dy, text=sym, font=(_DEVA_FONT, f_planet_sm, "bold"), fill=col)
+                if n_planets > 4:
+                    self.create_text(cx, cy + int(round(16 * min(fs, 1.3))), text=f"+{n_planets-4}", font=("Tahoma", f_rashi, "bold"), fill="#CC2200")
+
+            # Transit Planets (small blue text)
+            tran = house_transit[h]
             if tran:
                 txt = "·".join(tran[:3])
-                self.create_text(x0+4,y1-8,text=txt,
-                                 font=(_DEVA_FONT,7),fill=XP_BLUE2,anchor="w")
+                offset_y = int(round((15 if n_planets <= 2 else 19) * min(fs, 1.3)))
+                self.create_text(cx, cy + offset_y, text=f"T·{txt}", font=(_DEVA_FONT, f_tran, "bold"), fill=XP_BLUE2)
 
-        # ── Centre box ──
-        cx0=c+p; cy0=c+24+p; cx1=3*c+p; cy1=3*c+24+p
-        self.create_rectangle(cx0,cy0,cx1,cy1,fill="#F0F0F0",outline="#CCCCCC",width=1)
-        lg  = RASHI_DEVA[asc_rashi] if asc_rashi is not None else "---"
-        ld  = self.grahas.get("Lagna",{}).get("rashi_ansh",0)
-        mx  = (cx0+cx1)//2; my=(cy0+cy1)//2
-        self.create_text(mx,my-14,text="\u0932\u0917\u094d\u0928",
-                         font=(_DEVA_FONT,9,"bold"),fill="#000000")
-        self.create_text(mx,my+2, text=lg,  font=(_DEVA_FONT,10,"bold"),fill="#000000")
-        self.create_text(mx,my+18,text=f"{ld:.1f}°",font=(_DEVA_FONT,8),fill="#555555")
-
-        # ── Legend row ──
+        # ── Legend row & Interactive Toggle Badge ──
+        leg_y = y1 + 14
         if self.t_grahas:
-            self.create_text(s//2+p,s+38,
-                text="● Natal   \u25cf\u00b7 Transit (blue)   ● Retro (red)",
-                font=("Tahoma",7),fill="#555555",anchor="center")
+            self.create_text(x0 + 4, leg_y, text="● Natal  ●· Transit (blue)  ● Retro (red)",
+                             font=("Tahoma", f_leg), fill="#52525B", anchor="w")
         else:
-            self.create_text(s//2+p,s+38,
-                text="● Retro = red",
-                font=("Tahoma",7),fill="#CC2200",anchor="center")
+            self.create_text(x0 + 4, leg_y, text="● Natal (black)   ● Retrograde (red)",
+                             font=("Tahoma", f_leg), fill="#52525B", anchor="w")
+
+        # Interactive Switch Button Badge (Bottom Right)
+        bw = int(round(88 * min(fs, 1.3)))
+        bx1 = x1
+        bx0 = bx1 - bw
+        self.create_rectangle(bx0, leg_y - 8, bx1, leg_y + 8, fill="#F4F4F5", outline="#D4D4D8", width=1, tags="style_toggle")
+        self.create_text((bx0 + bx1) // 2, leg_y, text="⇄ South Indian", font=("Tahoma", f_leg, "bold"), fill="#2563EB", tags="style_toggle")
+        self.tag_bind("style_toggle", "<Button-1>", lambda e: self.toggle_style())
+        self.tag_bind("style_toggle", "<Enter>", lambda e: self.config(cursor="hand2"))
+        self.tag_bind("style_toggle", "<Leave>", lambda e: self.config(cursor=""))
+
+    def _draw_south_indian(self):
+        w = max(self.winfo_width(), self.size + 16)
+        h = max(self.winfo_height(), self.size + 36)
+        y_top = 22
+        bottom_pad = 26
+        s = max(min(w - 20, h - y_top - bottom_pad), 120)
+        c = s // 4
+        x0 = (w - s) // 2
+        y0 = y_top + 2
+        x1 = x0 + s
+        y1 = y0 + s
+
+        fs = getattr(self, "font_scale", 1.0)
+        f_title = max(8, int(round(9 * fs)))
+        f_abbr = max(6, int(round(7.5 * fs)))
+        f_planet = max(7, int(round(8.5 * fs)))
+        f_tran = max(6, int(round(7 * fs)))
+        f_center_lg = max(7, int(round(8.5 * fs)))
+        f_center_nm = max(8, int(round(10.5 * fs)))
+        f_center_dg = max(6, int(round(8 * fs)))
+        f_leg = max(6, int(round(7 * fs)))
+
+        self.create_text(w // 2, 11, text=f"{self.title}  ·  South Indian",
+                         font=("Tahoma", f_title, "bold"), fill="#262626")
+
+        # Collect natal planets per sign
+        sg_n = {i: [] for i in range(12)}
+        asc_rashi = None
+        if self.grahas:
+            al = self.grahas.get("Lagna", {}).get("longitude")
+            if al is not None:
+                asc_rashi = int(al / 30) % 12
+            elif "rashi" in self.grahas.get("Lagna", {}):
+                asc_rashi = int(self.grahas["Lagna"]["rashi"]) % 12
+
+        for gn in ALL_GRAHAS + ["Lagna"]:
+            pd = self.grahas.get(gn, {})
+            if not pd: continue
+            lon = pd.get("longitude")
+            if lon is not None:
+                sign = int(lon / 30) % 12
+            elif "rashi" in pd:
+                sign = int(pd["rashi"]) % 12
+            else:
+                continue
+            sg_n[sign].append((GRAHA_SYMBOLS.get(gn, gn[:2]), bool(pd.get("retro"))))
+
+        # Collect transit planets per sign
+        sg_t = {i: [] for i in range(12)}
+        for gn in ALL_GRAHAS:
+            pd = self.t_grahas.get(gn, {})
+            if not pd: continue
+            lon = pd.get("longitude")
+            if lon is None: continue
+            sg_t[int(lon / 30) % 12].append(GRAHA_SYMBOLS.get(gn, gn[:2]))
+
+        # Draw cells
+        for (row, col_), rn in SI_GRID.items():
+            cx0 = x0 + col_ * c
+            cy0 = y0 + row * c
+            cx1 = cx0 + c
+            cy1 = cy0 + c
+            bg = "#FFFCE8" if rn == asc_rashi else "#FFFFFF"
+            self.create_rectangle(cx0, cy0, cx1, cy1, fill=bg, outline="#CCCCCC", width=1)
+
+            fw = "bold" if rn == asc_rashi else "normal"
+            fc = "#B45309" if rn == asc_rashi else "#555555"
+            lbl = f"{RASHI_ABBR[rn]} ({rn+1})" if rn == asc_rashi else RASHI_ABBR[rn]
+            self.create_text((cx0 + cx1) // 2, cy0 + 10, text=lbl,
+                             font=(_DEVA_FONT, f_abbr, fw), fill=fc)
+
+            nat = sg_n.get(rn, [])
+            visible = nat[:5]
+            for i, (sym, retro) in enumerate(visible):
+                px_ = cx0 + 4 + (i % 3) * (c // 3)
+                py_ = cy0 + 23 + (i // 3) * 14
+                col_ = "#CC2200" if retro else "#111111"
+                self.create_text(px_, py_, text=sym, font=(_DEVA_FONT, f_planet, "bold"), fill=col_, anchor="w")
+            if len(nat) > 5:
+                self.create_text(cx1 - 4, cy1 - 5, text=f"+{len(nat)-5}",
+                                 font=("Tahoma", f_abbr, "bold"), fill="#CC2200", anchor="e")
+
+            tran = sg_t.get(rn, [])
+            if tran:
+                txt = "·".join(tran[:3])
+                self.create_text(cx0 + 4, cy1 - 8, text=f"T·{txt}",
+                                 font=(_DEVA_FONT, f_tran), fill=XP_BLUE2, anchor="w")
+
+        # Centre box
+        ccx0 = x0 + c
+        ccy0 = y0 + c
+        ccx1 = x0 + 3 * c
+        ccy1 = y0 + 3 * c
+        self.create_rectangle(ccx0, ccy0, ccx1, ccy1, fill="#F8FAFC", outline="#CCCCCC", width=1)
+        lg = RASHI_DEVA[asc_rashi] if asc_rashi is not None else "---"
+        ld = self.grahas.get("Lagna", {}).get("rashi_ansh", 0)
+        cmx = (ccx0 + ccx1) // 2
+        cmy = (ccy0 + ccy1) // 2
+        self.create_text(cmx, cmy - 14, text="\u0932\u0917\u094d\u0928 (Lagna)",
+                         font=(_DEVA_FONT, f_center_lg, "bold"), fill="#2563EB")
+        self.create_text(cmx, cmy + 2, text=lg, font=(_DEVA_FONT, f_center_nm, "bold"), fill="#000000")
+        self.create_text(cmx, cmy + 18, text=f"{ld:.1f}°", font=(_DEVA_FONT, f_center_dg), fill="#555555")
+
+        # Legend row & Interactive Toggle Badge
+        leg_y = y1 + 14
+        if self.t_grahas:
+            self.create_text(x0 + 4, leg_y, text="● Natal  ●· Transit (blue)  ● Retro (red)",
+                             font=("Tahoma", f_leg), fill="#52525B", anchor="w")
+        else:
+            self.create_text(x0 + 4, leg_y, text="● Natal (black)   ● Retrograde (red)",
+                             font=("Tahoma", f_leg), fill="#52525B", anchor="w")
+
+        # Interactive Switch Button Badge (Bottom Right)
+        bw = int(round(88 * min(fs, 1.3)))
+        bx1 = x1
+        bx0 = bx1 - bw
+        self.create_rectangle(bx0, leg_y - 8, bx1, leg_y + 8, fill="#F4F4F5", outline="#D4D4D8", width=1, tags="style_toggle")
+        self.create_text((bx0 + bx1) // 2, leg_y, text="⇄ North Indian", font=("Tahoma", f_leg, "bold"), fill="#2563EB", tags="style_toggle")
+        self.tag_bind("style_toggle", "<Button-1>", lambda e: self.toggle_style())
+        self.tag_bind("style_toggle", "<Enter>", lambda e: self.config(cursor="hand2"))
+        self.tag_bind("style_toggle", "<Leave>", lambda e: self.config(cursor=""))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
